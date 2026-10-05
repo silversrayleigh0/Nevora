@@ -87,9 +87,10 @@ export async function resumePdf(resume: TailoredResume, profile: Profile, hidden
     }
   };
 
-  const b = profile.basics;
-  text(b.name || "Your name", 20, { bold: true, gap: 1 });
-  text(contactLine(profile, "  ·  "), 9, { color: 81, gap: 1 });
+  const name = resume.header?.name ?? profile.basics.name;
+  const contact = resume.header?.contact ?? contactLine(profile, "  ·  ");
+  text(name || "Your name", 20, { bold: true, gap: 1 });
+  if (contact) text(contact, 9, { color: 81, gap: 1 });
   if (!hidden.includes("summary") && resume.summary) {
     heading("SUMMARY");
     text(stripPlaceholders(resume.summary), 10);
@@ -97,7 +98,7 @@ export async function resumePdf(resume: TailoredResume, profile: Profile, hidden
   const skills = resume.skills.filter((g) => g.items.length);
   if (!hidden.includes("skills") && skills.length) {
     heading("SKILLS");
-    skills.forEach((g) => text(`${g.category}: ${g.items.join(", ")}`, 10));
+    skills.forEach((g) => text(`${g.category}: ${g.items.filter(Boolean).join(", ")}`, 10));
   }
   for (const section of resume.sections) {
     if (hidden.includes(section.key) || !section.items.length) continue;
@@ -118,7 +119,7 @@ export async function resumePdf(resume: TailoredResume, profile: Profile, hidden
       }
     });
   }
-  pdf.setProperties({ title: `${b.name} — Resume`, author: b.name, creator: "Nevora" });
+  pdf.setProperties({ title: `${name} — Resume`, author: name, creator: "Nevora" });
   pdf.save(`${filename}.pdf`);
 }
 
@@ -146,7 +147,7 @@ export async function letterPdf(body: string, filename: string) {
 
 /** Plain text for pasting into application forms. */
 export function resumeText(resume: TailoredResume, profile: Profile, hidden: ToggleSection[]): string {
-  const out = [profile.basics.name, contactLine(profile, " | "), ""];
+  const out = [resume.header?.name ?? profile.basics.name, resume.header?.contact ?? contactLine(profile, " | "), ""];
   if (!hidden.includes("summary") && resume.summary) out.push("SUMMARY", stripPlaceholders(resume.summary), "");
   if (!hidden.includes("skills")) {
     out.push("SKILLS");

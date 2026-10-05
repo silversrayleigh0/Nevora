@@ -7,7 +7,6 @@ import { analyzeJD, match } from "../lib/ai";
 import { SAMPLE_JD_TEXT } from "../lib/sample";
 import { useApp } from "../store/app";
 
-const shortTitle = (t: string) => t.replace(/\bdeveloper\b\s*/i, "").replace(/\s+/g, " ").trim();
 
 function JobStep({ app }: { app: Application }) {
   const navigate = useNavigate();
@@ -24,7 +23,7 @@ function JobStep({ app }: { app: Application }) {
     setError("");
     try {
       const result = await analyzeJD(text);
-      const name = app.name === "Untitled resume" || !app.jd ? [shortTitle(result.title), result.company].filter(Boolean).join(" – ") : app.name;
+      const name = app.name === "Untitled resume" || !app.jd ? [result.title.trim(), result.company].filter(Boolean).join(" – ") : app.name;
       updateApplication(app.id, { jdText: text, jd: result, name, match: null, resume: null, verifications: null, plan: null, planDone: {}, coverLetter: null, interview: null });
     } catch (err) {
       setError((err as Error).message);

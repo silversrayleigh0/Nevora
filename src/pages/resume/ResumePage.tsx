@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Application, ResumeItem, TailoredResume, ToggleSection } from "../../../shared/types";
+import type { Application, ResumeItem, ResumeVersion, TailoredResume, ToggleSection } from "../../../shared/types";
 import { PencilIcon } from "../../components/icons";
 import { FlowPage } from "../../components/layout";
 import { Button, ErrorBox, Segmented, Steps } from "../../components/ui";
 import { tailor, verify } from "../../lib/ai";
 import { fileSafe, resumePdf, resumeText } from "../../lib/pdf";
-import { useApp } from "../../store/app";
+import { newId, useApp } from "../../store/app";
 import { toast } from "../../store/toast";
 import CoverLetterDialog from "./CoverLetterDialog";
 import { ChangesPanel, VerifiedPanel, verificationSummary } from "./Panels";
@@ -23,6 +23,30 @@ const TOGGLES: [ToggleSection, string][] = [
 
 const SAVE_LABEL = { idle: "Saved", saved: "Saved", saving: "Saving…", offline: "Saved offline", error: "Not saved" };
 
+const MAX_VERSIONS = 12;
+const VERSION_LABEL: Record<ResumeVersion["kind"], string> = { generated: "Generated", edited: "Edited", downloaded: "Downloaded" };
+
+/** Saved copies are named after the job: "Frontend Developer Intern – Acme Labs". */
+export const roleName = (app: Application) => [app.jd?.title, app.jd?.company].filter(Boolean).join(" – ") || app.name;
+
+/** Drops empty lines and skills left behind while editing. */
+function tidy(resume: TailoredResume): TailoredResume {
+  return {
+    ...resume,
+    skills: resume.skills
+      .map((g) => ({ category: g.category.trim(), items: g.items.map((i) => i.trim()).filter(Boolean) }))
+      .filter((g) => g.category && g.items.length),
+    sections: resume.sections.map((sec) => ({
+      ...sec,
+      items: sec.items.map((i) => ({ ...i, heading: i.heading.trim(), bullets: i.bullets.map((b) => ({ ...b, text: b.text.trim() })).filter((b) => b.text) })),
+    })),
+  };
+}
+
+function formatWhen(ts: number) {
+  return new Date(ts).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
 function ResumeStep({ app }: { app: Application }) {
   const profile = useApp((s) => s.profile);
   const saveState = useApp((s) => s.saveState);
@@ -36,7 +60,24 @@ function ResumeStep({ app }: { app: Application }) {
   const [confirmRegen, setConfirmRegen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [letterOpen, setLetterOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const beforeEdit = useRef<{ resume: TailoredResume; verifications: Application["verifications"] } | null>(null);
   const started = useRef(false);
+
+  /** Keeps a named copy of a resume in this application's history. */
+  const saveVersion = useCallback(
+    (kind: ResumeVersion["kind"], resume: TailoredResume, hiddenSections: ToggleSection[]) => {
+      const current = useApp.getState().applications.find((a) => a.id === app.id);
+      if (!current) return;
+      const versions = current.versions ?? [];
+      const latest = versions[0];
+      // Skip exact repeats of the most recent copy.
+      if (latest && JSON.stringify(latest.resume) === JSON.stringify(resume) && latest.kind === kind) return;
+      const version: ResumeVersion = { id: newId("ver"), name: roleName(current), createdAt: Date.now(), kind, resume: structuredClone(resume), hiddenSections: [...hiddenSections] };
+      updateApplication(app.id, { versions: [version, ...versions].slice(0, MAX_VERSIONS) });
+    },
+    [app.id, updateApplication],
+  );
 
   const runVerify = useCallback(
     async (resume: TailoredResume) => {
@@ -58,14 +99,18 @@ function ResumeStep({ app }: { app: Application }) {
     setError("");
     setBusy("tailor");
     try {
+      const previous = useApp.getState().applications.find((a) => a.id === app.id);
+      // Keep the current resume before it's replaced.
+      if (previous?.resume) saveVersion("edited", previous.resume, previous.hiddenSections);
       const resume = await tailor(profile, app.jd, app.match);
       updateApplication(app.id, { resume, verifications: null });
+      saveVersion("generated", resume, previous?.hiddenSections ?? []);
       await runVerify(resume);
     } catch (err) {
       setError((err as Error).message);
       setBusy("");
     }
-  }, [app.id, app.jd, app.match, profile, updateApplication, runVerify]);
+  }, [app.id, app.jd, app.match, profile, updateApplication, runVerify, saveVersion]);
 
   useEffect(() => {
     if (started.current) return;
@@ -90,7 +135,47 @@ function ResumeStep({ app }: { app: Application }) {
     );
 
   const summary = verificationSummary(resume, app.verifications);
-  const canDownload = !busy && !summary.bad.length && !summary.pending.length;
+  const canDownload = !editing && !busy && !summary.bad.length && !summary.pending.length;
+
+  const startEditing = () => {
+    beforeEdit.current = { resume, verifications: app.verifications };
+    setEditing(true);
+  };
+  /** Edit mode: lines that changed lose their check and are checked again when editing ends. */
+  const changeResume = (next: TailoredResume, changed: string[]) =>
+    updateApplication(app.id, {
+      resume: next,
+      verifications: changed.length ? (app.verifications ?? []).filter((v) => !changed.includes(v.bulletId)) : app.verifications,
+    });
+  const finishEditing = async () => {
+    const clean = tidy(resume);
+    const ids = new Set(clean.sections.flatMap((s) => s.items.flatMap((i) => i.bullets.map((b) => b.id))));
+    const verifications = (app.verifications ?? []).filter((v) => ids.has(v.bulletId));
+    updateApplication(app.id, { resume: clean, verifications });
+    setEditing(false);
+    const before = beforeEdit.current?.resume;
+    beforeEdit.current = null;
+    if (before && JSON.stringify(before) !== JSON.stringify(clean)) {
+      saveVersion("edited", clean, app.hiddenSections);
+      toast("Edits saved");
+    }
+    const pending = [...ids].some((id) => !verifications.some((v) => v.bulletId === id));
+    if (pending) {
+      setPanel("verified");
+      await runVerify(clean);
+    }
+  };
+  const cancelEditing = () => {
+    if (beforeEdit.current) updateApplication(app.id, beforeEdit.current);
+    beforeEdit.current = null;
+    setEditing(false);
+  };
+  const openVersion = (v: ResumeVersion) => {
+    saveVersion("edited", resume, app.hiddenSections);
+    updateApplication(app.id, { resume: structuredClone(v.resume), hiddenSections: v.hiddenSections, verifications: null });
+    toast(`Opened the ${VERSION_LABEL[v.kind].toLowerCase()} version from ${formatWhen(v.createdAt)}`);
+    void runVerify(v.resume);
+  };
 
   const editBullet = (id: string, text: string) => {
     const next: TailoredResume = {
@@ -152,7 +237,8 @@ function ResumeStep({ app }: { app: Application }) {
     setDownloading(true);
     setError("");
     try {
-      await resumePdf(resume, profile, app.hiddenSections, fileSafe(`${profile.basics.name}_${app.name}`) || "Resume");
+      await resumePdf(resume, profile, app.hiddenSections, fileSafe(`${resume.header?.name ?? profile.basics.name}_${roleName(app)}`) || "Resume");
+      saveVersion("downloaded", resume, app.hiddenSections);
     } catch {
       setError("Couldn't create the PDF. Try Copy text instead.");
     } finally {
@@ -202,7 +288,21 @@ function ResumeStep({ app }: { app: Application }) {
               {sync === "device" ? "Saved on this device" : SAVE_LABEL[saveState]} · Match {app.match?.score}
             </p>
           </div>
+          {editing ? (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-sm text-muted">Editing — changes save as you type</span>
+              <Button variant="ghost" size="sm" onClick={cancelEditing}>
+                Discard changes
+              </Button>
+              <Button size="sm" onClick={finishEditing}>
+                Done editing
+              </Button>
+            </div>
+          ) : (
           <div className="flex flex-wrap items-center gap-2.5">
+            <Button variant="secondary" size="sm" onClick={startEditing} disabled={Boolean(busy)}>
+              <PencilIcon /> Edit resume
+            </Button>
             <Button variant="secondary" size="sm" onClick={() => setLetterOpen(true)}>
               Cover letter
             </Button>
@@ -211,7 +311,7 @@ function ResumeStep({ app }: { app: Application }) {
             </Button>
             {confirmRegen ? (
               <>
-                <span className="text-sm text-muted">Replace your edits?</span>
+                <span className="text-sm text-muted">Write a fresh version? This one stays in history.</span>
                 <Button
                   variant="dark"
                   size="sm"
@@ -231,10 +331,11 @@ function ResumeStep({ app }: { app: Application }) {
                 Regenerate
               </Button>
             )}
-            <Button size="sm" onClick={download} loading={downloading} disabled={!canDownload} title={canDownload ? "Save as PDF" : "Fix or check flagged lines first"}>
+            <Button size="sm" onClick={download} loading={downloading} disabled={!canDownload} title={canDownload ? "Save as PDF" : editing ? "Finish editing first" : "Fix or check flagged lines first"}>
               Download PDF
             </Button>
           </div>
+          )}
         </div>
       </div>
       <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-7 md:px-8 xl:flex-row">
@@ -267,10 +368,50 @@ function ResumeStep({ app }: { app: Application }) {
               <p className="text-[13px] leading-snug text-muted">Still saved in your profile.</p>
             </div>
           )}
-          <p className="rounded-[22px] bg-white p-5 text-[13px] leading-snug text-muted">Click any line on the resume to edit it. Edited lines are checked again before download.</p>
+          {(app.versions?.length ?? 0) > 0 && (
+            <div className="flex flex-col gap-2.5 rounded-[22px] bg-white p-5">
+              <h2 className="text-sm font-semibold">Saved versions · {app.versions!.length}</h2>
+              <ul className="flex max-h-[320px] flex-col gap-2 overflow-y-auto">
+                {app.versions!.map((v) => (
+                  <li key={v.id} className="flex items-start justify-between gap-2 rounded-xl bg-surface px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-medium" title={v.name}>
+                        {v.name}
+                      </p>
+                      <p className="text-xs text-muted">
+                        {VERSION_LABEL[v.kind]} · {formatWhen(v.createdAt)}
+                      </p>
+                    </div>
+                    <button type="button" className="shrink-0 text-[13px] text-brand disabled:text-muted" disabled={editing || Boolean(busy)} onClick={() => openVersion(v)}>
+                      Open
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[13px] leading-snug text-muted">Every generated, edited and downloaded resume is kept here.</p>
+            </div>
+          )}
+          <p className="rounded-[22px] bg-white p-5 text-[13px] leading-snug text-muted">
+            {editing
+              ? "Edit any part of the resume. When you’re done, changed lines are checked against your profile before you can download."
+              : "Use Edit resume to change anything, or click a single line to edit it. Edited lines are checked again before download."}
+          </p>
         </aside>
         <main className="order-1 min-w-0 flex-1 xl:order-none">
-          <ResumePreview resume={resume} profile={profile} hidden={app.hiddenSections} verifications={app.verifications} onEditBullet={editBullet} />
+          {editing && (
+            <p className="no-print mx-auto mb-3 max-w-[640px] rounded-2xl bg-brand-soft px-4 py-3 text-sm text-brand-ink">
+              You’re editing. Change any text, add or remove lines, then press <b>Done editing</b> to check it and unlock the download.
+            </p>
+          )}
+          <ResumePreview
+            resume={resume}
+            profile={profile}
+            hidden={app.hiddenSections}
+            verifications={app.verifications}
+            editing={editing}
+            onEditBullet={editBullet}
+            onChange={changeResume}
+          />
         </main>
         <aside className="no-print order-2 flex w-full shrink-0 flex-col gap-4 self-start rounded-[22px] bg-white p-5 xl:order-none xl:w-[390px]">
           <Segmented

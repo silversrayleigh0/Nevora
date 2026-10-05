@@ -92,6 +92,8 @@ export type ResumeItem = {
 };
 
 export type TailoredResume = {
+  /** Name and contact line as edited on this resume; falls back to the profile when absent. */
+  header?: { name: string; contact: string };
   summary: string;
   skills: { category: string; items: string[] }[];
   sections: { key: SectionKey; items: ResumeItem[] }[];
@@ -146,6 +148,16 @@ export type Proof = { status: "verified" | "rejected"; reason: string; fileName:
 
 export type ToggleSection = "summary" | "skills" | SectionKey;
 
+/** A saved copy of a resume, kept when it's generated, regenerated or downloaded. */
+export type ResumeVersion = {
+  id: string;
+  name: string;
+  createdAt: number;
+  kind: "generated" | "edited" | "downloaded";
+  resume: TailoredResume;
+  hiddenSections: ToggleSection[];
+};
+
 export type Application = {
   id: string;
   name: string;
@@ -161,6 +173,7 @@ export type Application = {
   hiddenSections: ToggleSection[];
   coverLetter?: CoverLetter | null;
   interview?: InterviewQuestion[] | null;
+  versions?: ResumeVersion[];
 };
 
 /** Tasks the AI endpoint accepts. Prompts live on the server only. */

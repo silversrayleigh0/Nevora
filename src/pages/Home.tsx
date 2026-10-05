@@ -201,7 +201,10 @@ function ResumeCard({ app }: { app: Application }) {
         </div>
       </div>
       <div className="flex items-center justify-between text-sm">
-        <span className="text-[13px] text-muted">{edited(app.updatedAt)}</span>
+        <span className="text-[13px] text-muted">
+          {edited(app.updatedAt)}
+          {app.versions?.length ? ` · ${app.versions.length} saved version${app.versions.length > 1 ? "s" : ""}` : ""}
+        </span>
         {app.match ? (
           <span className="flex items-center gap-2">
             <span className={`h-2 w-2 rounded-full ${scoreDot(app.match.score)}`} aria-hidden="true" />
