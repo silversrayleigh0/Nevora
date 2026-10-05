@@ -61,10 +61,10 @@ serves one of those goals and fits the minimal design.
 
 ## LinkedIn import and course recommendations
 
-Flow: target job → match finds missing skills → (optional) connect LinkedIn and upload the LinkedIn PDF → compare with the profile → add what's missing → find courses for the remaining gaps → save or open them.
+Flow: setup step 4 (or Profile / Grow) → upload the LinkedIn "Save to PDF" export → compare with the profile → add missing skills, experience and certifications → Grow suggests courses for the remaining gaps → save or open them.
 
-- **Connect LinkedIn** (`/api/linkedin`): official OAuth 2.0 / OpenID Connect (`openid profile email`). Signed, expiring `state` plus an HttpOnly nonce cookie; same-site return paths only; the access token is used once and never stored. Needs `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`; without them the button is hidden and the PDF import still works.
-- **Why a PDF:** LinkedIn's OpenID Connect gives apps only name, email and photo. Skills and positions need LinkedIn partner approval, so they come from the member's own "Save to PDF" export, parsed like a resume (Claude, then the local parser). Nothing is invented.
-- **Compare:** anything already on the profile is skipped (skill aliases, same organisation, same project/certificate name). Skills that close a gap for the current job are listed first. Imported certificates stay off resumes until their image is verified. A name mismatch with the connected LinkedIn account blocks the import.
-- **Courses** (Grow → Skill gaps → Find courses): Claude with the web search tool. The server keeps only courses whose URL appeared in the search results. Without Claude, the app shows search links on Coursera, edX, freeCodeCamp, YouTube and Udemy instead. Results are cached per resume; saved courses live on the account.
-- Tests use mocked providers only; no live web searches or LinkedIn calls.
+- **No LinkedIn login.** A short 3-step guide shows how to download the PDF (Me → View profile → Resources → Save to PDF).
+- **Token use:** the PDF is read in the browser with a parser for LinkedIn's fixed layout, so most imports cost no AI tokens. Only if that finds nothing is Claude asked (`parseLinkedIn`, low effort, skills/experience/certifications only, 12k characters max).
+- **Compare:** anything already on the profile is skipped (skill aliases like React / React.js, same company and role, same certificate). Skills that close a gap for the current job come first. Imported certificates stay off resumes until their image is verified.
+- **Courses:** one Claude web-search call per resume covers every gap (up to 4 skills, at most 3 searches, low effort), cached on the resume. The server keeps only courses whose URL appeared in the search results. Without Claude, each gap shows search links on Coursera, edX, freeCodeCamp, YouTube and Udemy. Saved courses live on the account.
+- Tests use mocked providers only; no live web searches.

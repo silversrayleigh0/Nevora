@@ -13,6 +13,7 @@ const NewJob = lazy(() => import("./pages/NewJob"));
 const Match = lazy(() => import("./pages/Match"));
 const ResumePage = lazy(() => import("./pages/resume/ResumePage"));
 const Grow = lazy(() => import("./pages/Grow"));
+const SetupLinkedIn = lazy(() => import("./pages/SetupLinkedIn"));
 
 /** Scroll to the top on navigation, or to #anchor when the link has one. */
 function ScrollManager() {
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="/setup/details" element={<SetupDetails />} />
             <Route path="/setup/upload" element={<SetupUpload />} />
             <Route path="/setup/review" element={<SetupReview />} />
+            <Route path="/setup/linkedin" element={<SetupLinkedIn />} />
             <Route path="/home" element={<Home />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/new/jd" element={<NewJob />} />

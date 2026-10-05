@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import type { Application, BulletCoaching, Course, Gap } from "../../shared/types";
+import type { Application, BulletCoaching, Course, CourseSearch, Gap } from "../../shared/types";
 import { CheckIcon } from "../components/icons";
 import { FlowPage } from "../components/layout";
 import LinkedInImport from "../components/LinkedInImport";
@@ -145,52 +145,33 @@ function CourseRow({ course }: { course: Course }) {
   );
 }
 
-function Courses({ app, skill }: { app: Application; skill: string }) {
-  const profile = useApp((s) => s.profile);
-  const updateApplication = useApp((s) => s.updateApplication);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const found = app.courses?.[courseKey(skill)];
-
-  const search = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const result = await findCourses(skill, app.jd?.title ?? "", profile?.skills.map((s) => s.name) ?? []);
-      const latest = useApp.getState().applications.find((a) => a.id === app.id);
-      updateApplication(app.id, { courses: { ...(latest?.courses ?? {}), [courseKey(skill)]: { ...result, searchedAt: Date.now() } } });
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
+function Courses({ found, skill, busy, error, onSearch }: { found?: CourseSearch; skill: string; busy: boolean; error: string; onSearch: () => void }) {
   return (
     <div className="flex flex-col gap-3 border-t border-line pt-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[15px] font-semibold">Courses for {skill}</p>
+          <p className="text-[15px] font-semibold">Courses to learn {skill}</p>
           <p className="text-[13px] text-muted">
             {found?.source === "web"
               ? `Found on the web ${new Date(found.searchedAt).toLocaleDateString()}. Check the price and dates on each site.`
               : found?.source === "search"
                 ? "Live course search isn’t available right now, so here are searches on major course sites."
-                : "Search the web for current courses that teach this skill."}
+                : "Current courses that teach this skill."}
           </p>
         </div>
-        <Button variant={found ? "ghost" : "learn"} size="sm" loading={busy} onClick={search}>
-          {found ? "Search again" : "Find courses"}
-        </Button>
+        {!busy && (
+          <Button variant={found ? "ghost" : "learn"} size="sm" onClick={onSearch}>
+            {found ? "Search again" : "Find courses"}
+          </Button>
+        )}
       </div>
       {busy && <Steps steps={["Searching course sites", "Checking level and price", "Keeping only real course pages"]} />}
-      {error && <ErrorBox message={error} onRetry={search} />}
+      {error && !busy && <ErrorBox message={error} onRetry={onSearch} />}
       {found && !busy && (
         <ul className="flex flex-col gap-2">
           {found.courses.map((c) => (
             <CourseRow key={c.id} course={c} />
           ))}
-          {!found.courses.length && <li className="text-[15px] text-muted">No courses found. Try searching again.</li>}
         </ul>
       )}
     </div>
@@ -418,6 +399,34 @@ function GrowStep({ app }: { app: Application }) {
       toast("Couldn’t refresh your match score. It updates next time you open the match.");
     }
   };
+  // Courses for every gap come from ONE web-search call, made once per resume and cached.
+  const [coursesBusy, setCoursesBusy] = useState<string[]>([]);
+  const [coursesError, setCoursesError] = useState("");
+  const loadCourses = useCallback(
+    async (skills: string[]) => {
+      if (!skills.length) return;
+      setCoursesBusy(skills.map(courseKey));
+      setCoursesError("");
+      try {
+        const result = await findCourses(skills, app.jd?.title ?? "");
+        const latest = useApp.getState().applications.find((a) => a.id === app.id);
+        updateApplication(app.id, { courses: { ...(latest?.courses ?? {}), ...result } });
+      } catch (err) {
+        setCoursesError((err as Error).message);
+      } finally {
+        setCoursesBusy([]);
+      }
+    },
+    [app.id, app.jd?.title, updateApplication],
+  );
+  const coursesStarted = useRef(false);
+  useEffect(() => {
+    if (coursesStarted.current || !app.plan?.length) return;
+    const missing = app.plan.map((g) => g.skill).filter((skill) => !app.courses?.[courseKey(skill)]);
+    coursesStarted.current = true;
+    void loadCourses(missing);
+  }, [app.plan, app.courses, loadCourses]);
+
   const gapBadge = (skill: string) => (imported && hasSkill(imported, skill) ? "Listed on your LinkedIn" : undefined);
 
   return (
@@ -452,7 +461,7 @@ function GrowStep({ app }: { app: Application }) {
         </div>
       )}
       <div className="mt-9">
-        <LinkedInImport returnTo="/new/grow" gapSkills={gapSkills} onApplied={() => void rematch()} />
+        <LinkedInImport gapSkills={gapSkills} onApplied={() => void rematch()} />
       </div>
       <h2 className="mt-12 text-[28px] font-semibold tracking-[-0.02em]">Skill gaps</h2>
       <div className="mt-4 flex flex-col gap-3.5">
@@ -474,7 +483,13 @@ function GrowStep({ app }: { app: Application }) {
             onToggleOpen={() => setOpen({ ...open, [i]: !open[i] })}
             onToggleStep={(key) => updateApplication(app.id, { planDone: { ...app.planDone, [key]: !app.planDone[key] } })}
           >
-            <Courses app={app} skill={gap.skill} />
+            <Courses
+              skill={gap.skill}
+              found={app.courses?.[courseKey(gap.skill)]}
+              busy={coursesBusy.includes(courseKey(gap.skill))}
+              error={coursesError}
+              onSearch={() => void loadCourses([gap.skill])}
+            />
           </GapCard>
         ))}
       </div>

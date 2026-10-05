@@ -235,18 +235,18 @@ function FlowSteps({ current, reached }: { current: FlowStep; reached: number })
   );
 }
 
-export function SetupHeader({ step }: { step: 1 | 2 | 3 }) {
+export function SetupHeader({ step }: { step: 1 | 2 | 3 | 4 }) {
   return (
     <>
       <header className="mx-auto flex h-16 max-w-[1344px] items-center justify-between px-6 md:px-12">
         <Logo />
         <div className="flex items-center gap-3">
-          <span className="text-sm text-muted">Step {step} of 3</span>
+          <span className="text-sm text-muted">Step {step} of 4</span>
           <ThemeToggle />
         </div>
       </header>
-      <div className="h-[3px] bg-[#F2F2F5]" role="progressbar" aria-valuenow={step} aria-valuemin={1} aria-valuemax={3} aria-label="Setup progress">
-        <div className="h-[3px] bg-brand transition-all" style={{ width: `${(step / 3) * 100}%` }} />
+      <div className="h-[3px] bg-[#F2F2F5]" role="progressbar" aria-valuenow={step} aria-valuemin={1} aria-valuemax={4} aria-label="Setup progress">
+        <div className="h-[3px] bg-brand transition-all" style={{ width: `${(step / 4) * 100}%` }} />
       </div>
     </>
   );

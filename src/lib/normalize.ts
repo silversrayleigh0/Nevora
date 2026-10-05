@@ -2,6 +2,7 @@
 import type {
   BulletCoaching,
   Course,
+  LinkedInExtract,
   Gap,
   Insights,
   InterviewQuestion,
@@ -15,6 +16,7 @@ import type {
   TailoredResume,
   Verification,
 } from "../../shared/types";
+import { categorize } from "./options";
 
 type Obj = Record<string, unknown>;
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -316,23 +318,52 @@ export function normalizeProofCheck(v: unknown, kind: "certificate" | "experienc
   return check;
 }
 
-/** Courses from web search. The server already dropped any link that wasn't in the search results. */
-export function normalizeCourses(v: unknown, skill: string): Course[] {
+/** Courses from web search, grouped under the gap skills asked for. The server already dropped links not seen in search results. */
+export function normalizeCourses(v: unknown, skills: string[]): Record<string, Course[]> {
+  const out: Record<string, Course[]> = {};
   const seen = new Set<string>();
-  return arr(obj(v).courses)
+  arr(obj(v).courses)
     .map(obj)
-    .map((c, i) => ({
-      id: `course_${i}_${str(c.url).replace(/[^a-z0-9]/gi, "").slice(-24)}`,
-      skill,
-      title: str(c.title).trim(),
-      provider: str(c.provider).trim(),
-      url: str(c.url).trim(),
-      free: typeof c.free === "boolean" ? c.free : null,
-      level: str(c.level).trim(),
-      duration: str(c.duration).trim(),
-      why: str(c.why).trim(),
-      source: "web" as const,
-    }))
-    .filter((c) => c.title && /^https:\/\//.test(c.url) && !seen.has(c.url) && seen.add(c.url))
-    .slice(0, 5);
+    .forEach((c, i) => {
+      const skill = skills.find((s) => s.toLowerCase() === str(c.skill).trim().toLowerCase()) ?? (skills.length === 1 ? skills[0] : "");
+      const course: Course = {
+        id: `course_${i}_${str(c.url).replace(/[^a-z0-9]/gi, "").slice(-24)}`,
+        skill,
+        title: str(c.title).trim(),
+        provider: str(c.provider).trim(),
+        url: str(c.url).trim(),
+        free: typeof c.free === "boolean" ? c.free : null,
+        level: str(c.level).trim(),
+        duration: str(c.duration).trim(),
+        why: str(c.why).trim(),
+        source: "web",
+      };
+      if (!skill || !course.title || !/^https:\/\//.test(course.url) || seen.has(course.url)) return;
+      seen.add(course.url);
+      (out[skill.toLowerCase()] ??= []).push(course);
+    });
+  return out;
+}
+
+/** Skills, experience and certifications from an AI read of a LinkedIn PDF (fallback only). */
+export function normalizeLinkedIn(v: unknown): LinkedInExtract {
+  const o = obj(v);
+  return {
+    skills: strings(o.skills).slice(0, 60).map((name, i) => ({ id: `li_skill_${i + 1}`, name, category: categorize(name) })),
+    experience: arr(o.experience)
+      .map(obj)
+      .map((e, i) => ({
+        id: `li_exp_${i + 1}`,
+        role: str(e.role).trim(),
+        org: str(e.org).trim(),
+        start: str(e.start).trim(),
+        end: str(e.end).trim(),
+        bullets: strings(e.bullets).map((text, b) => ({ id: `li_exp_${i + 1}_b${b + 1}`, text })),
+      }))
+      .filter((e) => e.role || e.org),
+    certifications: arr(o.certifications)
+      .map(obj)
+      .map((c, i) => ({ id: `li_cert_${i + 1}`, name: str(c.name).trim(), issuer: str(c.issuer).trim(), date: "", credential: "" }))
+      .filter((c) => c.name),
+  };
 }

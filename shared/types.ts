@@ -38,14 +38,11 @@ export type Account = {
   savedCourses?: Course[];
 };
 
-/** Identity shared by "Sign in with LinkedIn" (OpenID Connect). LinkedIn gives nothing more to standard apps. */
-export type LinkedInIdentity = { sub: string; name: string; email: string; picture: string; connectedAt: number };
+export type LinkedInExtract = Pick<Profile, "skills" | "experience" | "certifications">;
 
-/** LinkedIn details kept on the account: who connected, and what their exported profile PDF contained. */
+/** What the person's LinkedIn "Save to PDF" export contained (skills, experience, certifications). */
 export type LinkedInData = {
-  identity?: LinkedInIdentity;
-  /** Parsed from the LinkedIn "Save to PDF" export. */
-  imported?: Profile;
+  imported?: LinkedInExtract;
   importedAt?: number;
   fileName?: string;
   /** Suggestion keys the person chose not to add. */
@@ -228,4 +225,5 @@ export type AiTask =
   | "coverLetter"
   | "interviewPrep"
   | "coachBullet"
-  | "findCourses";
+  | "findCourses"
+  | "parseLinkedIn";

@@ -53,7 +53,7 @@ export async function claudeJson(opts: ClaudeOptions): Promise<unknown> {
         // If a safety classifier declines, the API re-runs the request on a suitable model.
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
-        ...(opts.webSearch ? { tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }] } : {}),
+        ...(opts.webSearch ? { tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }] } : {}),
         messages,
       });
     } catch (err) {

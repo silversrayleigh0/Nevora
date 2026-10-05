@@ -34,7 +34,7 @@ function ProfileBody({ setup }: { setup: boolean }) {
       /* insights are optional; the home page offers to try again */
     }
     setBusy(false);
-    navigate("/home");
+    navigate(setup ? "/setup/linkedin" : "/home");
   };
 
   return (
@@ -42,7 +42,7 @@ function ProfileBody({ setup }: { setup: boolean }) {
       <p className="text-[15px] font-medium text-brand">{setup ? "Review" : "Your profile"}</p>
       <h1 className="mt-3 text-[40px] font-semibold tight md:text-5xl">{setup ? "Here’s what we found." : "Everything Nevora knows about you."}</h1>
       <p className="mt-3 text-[17px] text-muted">
-        {setup ? "Tap anything to edit. Add what’s missing, then finish setup." : "Changes save automatically and apply to your next tailored resume."}
+        {setup ? "Tap anything to edit. Add what’s missing, then continue." : "Changes save automatically and apply to your next tailored resume."}
       </p>
       <div className="mt-6 flex items-center gap-3 rounded-2xl bg-brand-soft px-5 py-4 text-[15px] text-brand-ink">
         <InfoIcon />
@@ -54,7 +54,7 @@ function ProfileBody({ setup }: { setup: boolean }) {
       </div>
       {!setup && (
         <div className="mt-6">
-          <LinkedInImport returnTo="/profile" />
+          <LinkedInImport />
         </div>
       )}
       <div className="mt-9 flex items-start gap-12">
@@ -87,7 +87,7 @@ function ProfileBody({ setup }: { setup: boolean }) {
               {setup ? "Back" : "Done"}
             </Button>
             <Button size="lg" loading={busy} onClick={finish}>
-              {setup ? "Finish setup" : "Save and refresh insights"}
+              {setup ? "Continue" : "Save and refresh insights"}
             </Button>
           </div>
         </div>

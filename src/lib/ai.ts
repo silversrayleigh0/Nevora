@@ -5,7 +5,9 @@ import type {
   AiTask,
   BulletCoaching,
   Course,
+  CourseSearch,
   CoverLetter,
+  LinkedInExtract,
   Gap,
   Insights,
   InterviewQuestion,
@@ -31,10 +33,12 @@ import {
   scoreMatch,
   sourceText,
 } from "./engine";
-import { MAX_UPLOAD_BYTES, proofImage, resumeText } from "./extract";
+import { isPdf, MAX_UPLOAD_BYTES, pdfText, proofImage, resumeText } from "./extract";
+import { extractedAnything, parseLinkedInText } from "./linkedinPdf";
 import {
   normalizeCoaching,
   normalizeCourses,
+  normalizeLinkedIn,
   normalizeInsights,
   normalizeInterview,
   normalizeJD,
@@ -282,16 +286,45 @@ export function courseSearchLinks(skill: string): Course[] {
 }
 
 /**
- * Finds real, current courses for a skill with Claude's web search. Without AI (or when
- * web search isn't available) it returns search links on major course sites instead.
+ * Suggests real, current courses for several gap skills in ONE web-search call (fewer tokens
+ * than one call per skill). Without AI or web search, returns search links on course sites.
  */
-export async function findCourses(skill: string, role: string, known: string[]): Promise<{ courses: Course[]; source: "web" | "search" }> {
+export async function findCourses(skills: string[], role: string): Promise<Record<string, CourseSearch>> {
+  const list = [...new Set(skills.map((s) => s.trim()).filter(Boolean))].slice(0, 4);
+  const now = Date.now();
+  let found: Record<string, Course[]> = {};
   try {
-    const data = await ask("findCourses", { skill, role, known: known.slice(0, 20) });
-    const courses = data ? normalizeCourses(data, skill) : [];
-    if (courses.length) return { courses, source: "web" };
+    const data = list.length ? await ask("findCourses", { skills: list, role }) : null;
+    if (data) found = normalizeCourses(data, list);
   } catch (err) {
     if ((err as { code?: string }).code !== "search_unavailable") throw err;
   }
-  return { courses: courseSearchLinks(skill), source: "search" };
+  return Object.fromEntries(
+    list.map((skill) => {
+      const web = found[skill.toLowerCase()];
+      return [skill.toLowerCase(), web?.length ? { courses: web, searchedAt: now, source: "web" as const } : { courses: courseSearchLinks(skill), searchedAt: now, source: "search" as const }];
+    }),
+  );
+}
+
+/**
+ * Reads a LinkedIn PDF export. The layout is fixed, so it is read in the browser first;
+ * the AI (a short, low-effort task) is only asked when that finds nothing.
+ */
+export async function importLinkedIn(file: File, name: string): Promise<LinkedInExtract> {
+  if (!isPdf(file)) throw new Error("Choose the PDF you saved from LinkedIn.");
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error("That file is over 5 MB. Try a smaller file.");
+  let text: string;
+  try {
+    text = await pdfText(file, 6);
+  } catch {
+    throw new Error("We couldn't open that PDF. Save it from LinkedIn again and retry.");
+  }
+  if (text.trim().length < 40) throw new Error("We couldn't read text from this PDF. Use LinkedIn’s Save to PDF, not a screenshot.");
+  const local = parseLinkedInText(text, name);
+  if (extractedAnything(local)) return local;
+  const data = await ask("parseLinkedIn", text.slice(0, 12_000));
+  const ai = data ? normalizeLinkedIn(data) : null;
+  if (ai && extractedAnything(ai)) return ai;
+  throw new Error("We couldn’t find Skills, Experience or Certifications in that PDF. Make sure it’s the Save to PDF file from your LinkedIn profile.");
 }

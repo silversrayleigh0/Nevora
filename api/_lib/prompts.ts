@@ -66,19 +66,21 @@ score 1-5. missing: any of "Strong verb","Technology","Impact","Metric","Scope".
 improved: a stronger version using ONLY facts in the original line; use bracketed placeholders like [technology] or [result, e.g. users or speed] for anything missing — never invent facts.
 tip: one or two sentences explaining the XYZ formula (accomplished X, measured by Y, by doing Z) applied to their line. ${JSON_ONLY}`,
 
-  findCourses: `You find online courses for a student closing a skill gap. INPUT has "skill", the target "role" and optionally "known" (related skills they already have).
-Use web search to find 3-5 courses that are currently available and teach this skill at the right level for the role. Prefer free or free-to-audit courses and official learning paths (vendor docs/academies, freeCodeCamp, Coursera, edX, Udemy, Microsoft Learn, Google, AWS Skill Builder, YouTube from reputable channels).
-Return {"courses":[{"title":"","provider":"","url":"","free":true,"level":"beginner|intermediate|advanced","duration":"","why":""}]}.
-url: the exact URL of the course page as it appeared in your search results — never guess, shorten or build a URL. Leave out any course you didn't see in the results.
-free: true if free or free to audit, false if paid, null if unclear. duration: as stated on the page (e.g. "6 hours", "4 weeks"), or "" if not stated.
-why: one short sentence on why this course fits the student and the role. ${JSON_ONLY}`,
+  findCourses: `You suggest online courses for a student closing skill gaps. INPUT has "skills" (1-4 gap skills) and the target "role".
+Use web search (one or two broad searches are enough) to find, for EACH skill, 2-3 courses that are currently available and suit the role. Prefer free or free-to-audit courses and official learning paths (freeCodeCamp, Coursera, edX, Microsoft Learn, Google, AWS Skill Builder, vendor academies, Udemy).
+Return {"courses":[{"skill":"","title":"","provider":"","url":"","free":true,"level":"beginner|intermediate|advanced","duration":"","why":""}]}.
+skill: exactly one of the INPUT skills. url: the exact course page URL from your search results — never guess or build one; leave out any course you didn't see.
+free: true if free or free to audit, false if paid, null if unclear. duration: as stated on the page, or "". why: one short sentence. ${JSON_ONLY}`,
+
+  parseLinkedIn: `INPUT is text from a LinkedIn profile PDF. Return only {"skills":[""],"experience":[{"role":"","org":"","start":"","end":"","bullets":[""]}],"certifications":[{"name":"","issuer":""}]}.
+Copy facts verbatim; never add anything. Dates like "Jun 2024" or "Present". ${JSON_ONLY}`,
 };
 
 /** Tasks that run with Claude's web search tool. Other providers can't search, so these need Claude. */
 export const WEB_TASKS = new Set<AiTask>(["findCourses"]);
 
 /** Small, fast model for short tasks; the main model for everything else. */
-export const QUICK_TASKS = new Set<AiTask>(["insights", "coachBullet", "analyzeJD"]);
+export const QUICK_TASKS = new Set<AiTask>(["insights", "coachBullet", "analyzeJD", "parseLinkedIn", "findCourses"]);
 
 /** Tasks that accept an uploaded image. */
 export const IMAGE_TASKS = new Set<AiTask>(["verifyDocument"]);
@@ -103,7 +105,8 @@ export const MAX_TOKENS: Partial<Record<AiTask, number>> = {
   insights: 800,
   verifyDocument: 1200,
   coachBullet: 600,
-  findCourses: 2500,
+  findCourses: 3000,
+  parseLinkedIn: 2500,
 };
 
 type RawCourse = { title?: unknown; provider?: unknown; url?: unknown; free?: unknown; level?: unknown; duration?: unknown; why?: unknown };
@@ -124,5 +127,5 @@ export function keepCitedCourses(data: unknown, sources: string[]): { courses: R
   const courses = (Array.isArray(list) ? (list as RawCourse[]) : []).filter(
     (c) => typeof c?.url === "string" && /^https:\/\//.test(c.url) && seen.has(comparableUrl(c.url)),
   );
-  return { courses: courses.slice(0, 5) };
+  return { courses: courses.slice(0, 12) };
 }
