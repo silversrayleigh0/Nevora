@@ -26,8 +26,8 @@ describe("AI endpoint", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("reports which providers are configured", async () => {
-    expect((await handleAi({ method: "GET", body: null }, both)).body).toEqual({ ai: true, claude: true, openrouter: true });
-    expect((await handleAi({ method: "GET", body: null }, {})).body).toEqual({ ai: false, claude: false, openrouter: false });
+    expect((await handleAi({ method: "GET", body: null }, both)).body).toEqual({ ai: true, claude: true, openrouter: true, openrouterKeys: 1 });
+    expect((await handleAi({ method: "GET", body: null }, {})).body).toEqual({ ai: false, claude: false, openrouter: false, openrouterKeys: 0 });
   });
 
   it("refuses when no provider is configured", async () => {
@@ -94,6 +94,20 @@ describe("AI endpoint", () => {
     const r = await handleAi(post({ task: "match", input: {} }), orOnly, { fetchImpl: asFetch(fetchImpl) });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(r.status).toBe(502);
+  });
+
+  it("tries each OpenRouter key in order", async () => {
+    const env = { OPENROUTER_API_KEY: "k1", OPENROUTER_API_KEY_2: "k2", OPENROUTER_API_KEY_3: "k3", AI_REQUESTS_PER_HOUR: "1000" };
+    const used: string[] = [];
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      const key = String((init.headers as Record<string, string>).Authorization).replace("Bearer ", "");
+      used.push(key);
+      if (key !== "k3") return new Response("{}", { status: 402 });
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }), { status: 200 });
+    });
+    const r = await handleAi(post({ task: "analyzeJD", input: "x" }), env, { fetchImpl: asFetch(fetchImpl) });
+    expect(used).toEqual(["k1", "k2", "k3"]);
+    expect(r).toEqual({ status: 200, body: { data: { ok: true }, provider: "openrouter-3" } });
   });
 
   it("limits requests per user", async () => {

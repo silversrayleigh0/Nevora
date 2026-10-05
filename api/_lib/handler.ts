@@ -10,6 +10,8 @@ export type Env = {
   ANTHROPIC_API_KEY?: string;
   ANTHROPIC_MODEL?: string;
   OPENROUTER_API_KEY?: string;
+  OPENROUTER_API_KEY_2?: string;
+  OPENROUTER_API_KEY_3?: string;
   OPENROUTER_MODEL?: string;
   OPENROUTER_MODEL_QUICK?: string;
   OPENROUTER_FALLBACK_MODELS?: string;
@@ -42,11 +44,17 @@ const EFFORT: Partial<Record<AiTask, "low" | "medium" | "high">> = { tailor: "me
 
 export async function handleAi(req: AiRequest, env: Env, providers: Providers = {}): Promise<AiResponse> {
   const claudeKey = env.ANTHROPIC_API_KEY?.trim();
-  const openrouterKey = env.OPENROUTER_API_KEY?.trim();
+  // Primary key first, then the backups; each is tried in turn if the one before fails.
+  const openrouterKeys = [env.OPENROUTER_API_KEY, env.OPENROUTER_API_KEY_2, env.OPENROUTER_API_KEY_3]
+    .map((k) => k?.trim())
+    .filter((k): k is string => Boolean(k));
+  const openrouterKey = openrouterKeys[0];
   const projectId = (env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || FIREBASE_WEB_CONFIG.projectId).trim();
 
   // The app asks this once to decide between "Live AI" and basic mode.
-  if (req.method === "GET") return { status: 200, body: { ai: Boolean(claudeKey || openrouterKey), claude: Boolean(claudeKey), openrouter: Boolean(openrouterKey) } };
+  if (req.method === "GET") {
+    return { status: 200, body: { ai: Boolean(claudeKey || openrouterKey), claude: Boolean(claudeKey), openrouter: Boolean(openrouterKey), openrouterKeys: openrouterKeys.length } };
+  }
   if (req.method !== "POST") return { status: 405, body: { error: { code: "method_not_allowed", message: "Use POST." } } };
 
   try {
@@ -95,8 +103,8 @@ export async function handleAi(req: AiRequest, env: Env, providers: Providers = 
       }
     }
 
-    // 2. OpenRouter (fallback)
-    if (openrouterKey) {
+    // 2. OpenRouter, trying each configured key in order
+    for (const [index, apiKey] of openrouterKeys.entries()) {
       const primary = QUICK_TASKS.has(task) ? env.OPENROUTER_MODEL_QUICK || DEFAULT_QUICK_MODEL : env.OPENROUTER_MODEL || DEFAULT_MODEL;
       const fallbacks = (env.OPENROUTER_FALLBACK_MODELS ?? "")
         .split(",")
@@ -104,7 +112,7 @@ export async function handleAi(req: AiRequest, env: Env, providers: Providers = 
         .filter((m) => m && m !== primary);
       try {
         const data = await chatJson({
-          apiKey: openrouterKey,
+          apiKey,
           models: [primary, ...fallbacks].slice(0, 3),
           system: PROMPTS[task],
           user,
@@ -113,10 +121,10 @@ export async function handleAi(req: AiRequest, env: Env, providers: Providers = 
           appUrl: env.APP_URL,
           fetchImpl: providers.fetchImpl,
         });
-        return { status: 200, body: { data, provider: "openrouter" } };
+        return { status: 200, body: { data, provider: index ? `openrouter-${index + 1}` : "openrouter" } };
       } catch (err) {
         lastError = err instanceof HttpError ? err : new HttpError(502, "upstream_error", "The AI service returned an error.");
-        console.warn(`[ai] openrouter failed for ${task}: ${lastError.code} ${lastError.message}`);
+        console.warn(`[ai] openrouter key ${index + 1} failed for ${task}: ${lastError.code} ${lastError.message}`);
       }
     }
     throw lastError ?? new HttpError(503, "ai_unavailable", "AI isn't configured on this server.");

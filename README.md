@@ -48,6 +48,7 @@ Sign-in works out of the box against the `nevora-f6289` Firebase project. Withou
 | `VITE_FIREBASE_*` | Browser | Optional. Overrides the Firebase web config in `shared/firebaseConfig.ts` (project `nevora-f6289`) |
 | `ANTHROPIC_API_KEY` | Server only | Primary AI: Claude (`claude-opus-5-5` by default, override with `ANTHROPIC_MODEL`) |
 | `OPENROUTER_API_KEY` | Server only | Fallback AI, used when Claude fails or isn't configured. Set a credit limit on the key |
+| `OPENROUTER_API_KEY_2`, `OPENROUTER_API_KEY_3` | Server only | Optional backup OpenRouter keys, tried in order when the previous key fails |
 | `OPENROUTER_MODEL`, `OPENROUTER_MODEL_QUICK`, `OPENROUTER_FALLBACK_MODELS` | Server | Optional model overrides |
 | `FIREBASE_PROJECT_ID` | Server | Token verification (defaults to `nevora-f6289`) |
 | `APP_URL`, `AI_REQUESTS_PER_HOUR` | Server | Attribution and per-user limit |
