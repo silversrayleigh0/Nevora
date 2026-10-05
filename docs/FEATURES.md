@@ -44,10 +44,10 @@ serves one of those goals and fits the minimal design.
 | Knowledge Base browser (TF-IDF RAG) | **Cut** as a page. The guidance (action verbs, XYZ formula, keyword placement) now lives in the prompts and the bullet coach |
 | Settings (font, size, accent colour, paper size) | **Cut.** One typographically tuned A4 layout; fewer knobs, fewer broken resumes |
 | User-supplied OpenRouter key in the browser | **Cut.** Keys stay on the server |
-| Version snapshots | **Simplified.** Each tailored resume is saved per job; "Duplicate" covers versioning |
+| Version snapshots | **Built.** Generated, edited and downloaded versions are kept per resume, named by job role |
 | Quality badges, hardcoded ATS / template / QA scores | **Cut.** Only measured numbers are shown (match score and verified-line count) |
 | User testing metrics modal | **Cut.** Landing-page survey figures stay hidden until real results are filled in (`src/pages/Landing.tsx`) |
-| Profile photo | **Cut.** Photos are discouraged on ATS resumes and invite bias |
+| Profile photo | **Optional.** Used only by the three photo templates; the three no-photo templates are recommended |
 | Demo account | **Cut.** Email/password and Google are the only ways in |
 | Server fallback with canned resume content | **Removed.** Fallbacks only reorder and reuse the student's own words |
 
@@ -58,3 +58,13 @@ serves one of those goals and fits the minimal design.
 - `/api/agent` had no auth or rate limiting: the new `/api/ai` requires a Firebase ID token, accepts only a fixed list of tasks with server-side prompts, caps input size, and rate-limits per user.
 - Hardcoded scores: removed.
 - Section layout ignored in some PDF paths: there is one PDF path and it honours hidden sections.
+
+## LinkedIn import and course recommendations
+
+Flow: target job → match finds missing skills → (optional) connect LinkedIn and upload the LinkedIn PDF → compare with the profile → add what's missing → find courses for the remaining gaps → save or open them.
+
+- **Connect LinkedIn** (`/api/linkedin`): official OAuth 2.0 / OpenID Connect (`openid profile email`). Signed, expiring `state` plus an HttpOnly nonce cookie; same-site return paths only; the access token is used once and never stored. Needs `LINKEDIN_CLIENT_ID` and `LINKEDIN_CLIENT_SECRET`; without them the button is hidden and the PDF import still works.
+- **Why a PDF:** LinkedIn's OpenID Connect gives apps only name, email and photo. Skills and positions need LinkedIn partner approval, so they come from the member's own "Save to PDF" export, parsed like a resume (Claude, then the local parser). Nothing is invented.
+- **Compare:** anything already on the profile is skipped (skill aliases, same organisation, same project/certificate name). Skills that close a gap for the current job are listed first. Imported certificates stay off resumes until their image is verified. A name mismatch with the connected LinkedIn account blocks the import.
+- **Courses** (Grow → Skill gaps → Find courses): Claude with the web search tool. The server keeps only courses whose URL appeared in the search results. Without Claude, the app shows search links on Coursera, edX, freeCodeCamp, YouTube and Udemy instead. Results are cached per resume; saved courses live on the account.
+- Tests use mocked providers only; no live web searches or LinkedIn calls.

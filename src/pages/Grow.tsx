@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
-import type { Application, BulletCoaching, Gap } from "../../shared/types";
+import type { Application, BulletCoaching, Course, Gap } from "../../shared/types";
 import { CheckIcon } from "../components/icons";
 import { FlowPage } from "../components/layout";
+import LinkedInImport from "../components/LinkedInImport";
 import { Button, ErrorBox, Placeholders, Steps } from "../components/ui";
-import { coachBullet, interviewPrep, learningPlan } from "../lib/ai";
+import { coachBullet, findCourses, interviewPrep, learningPlan, match } from "../lib/ai";
 import { pointsFor, potentialScore, sourceLabel } from "../lib/engine";
+import { hasSkill } from "../lib/linkedin";
 import { useApp } from "../store/app";
+import { toast } from "../store/toast";
 
 const PRIORITY = { high: "High priority", medium: "Medium", low: "Low" };
 
@@ -16,16 +19,20 @@ function GapCard({
   open,
   done,
   gain,
+  badge,
   onToggleOpen,
   onToggleStep,
+  children,
 }: {
   gap: Gap;
   index: number;
   open: boolean;
   done: Record<string, boolean>;
   gain?: number;
+  badge?: string;
   onToggleOpen: () => void;
   onToggleStep: (key: string) => void;
+  children?: ReactNode;
 }) {
   const finished = gap.steps.filter((_, i) => done[`${index}-${i}`]).length;
   return (
@@ -36,6 +43,7 @@ function GapCard({
           <span className={`rounded-full px-3 py-1 text-[13px] ${gap.priority === "high" ? "bg-learn text-white" : "bg-learn-soft text-learn-ink"}`}>{PRIORITY[gap.priority]}</span>
           {gain ? <span className="rounded-full bg-surface px-3 py-1 text-[13px] font-medium">+{gain} match points</span> : null}
           {finished === gap.steps.length && <span className="rounded-full bg-ok-soft px-3 py-1 text-[13px] text-ok">Done</span>}
+          {badge && <span className="rounded-full bg-surface px-3 py-1 text-[13px] font-medium text-[#0a66c2]">{badge}</span>}
         </div>
         <div className="flex items-center gap-5 text-sm text-muted">
           <span className="hidden sm:inline">{gap.timeEstimate}</span>
@@ -80,8 +88,127 @@ function GapCard({
               <p className="mt-1.5 text-[15px] font-medium leading-normal">{gap.miniProject}</p>
             </div>
           </div>
+          {children && <div className="md:col-span-2">{children}</div>}
         </div>
       )}
+    </section>
+  );
+}
+
+const courseKey = (skill: string) => skill.trim().toLowerCase();
+
+function CourseRow({ course }: { course: Course }) {
+  const account = useApp((s) => s.account);
+  const setAccount = useApp((s) => s.setAccount);
+  const saved = Boolean(account?.savedCourses?.some((c) => c.url === course.url));
+  const toggle = () => {
+    if (!account) return;
+    const list = account.savedCourses ?? [];
+    setAccount({ ...account, savedCourses: saved ? list.filter((c) => c.url !== course.url) : [course, ...list].slice(0, 50) });
+    toast(saved ? "Removed from saved courses" : "Course saved");
+  };
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface px-4 py-3.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-medium leading-snug">{course.title}</p>
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
+          <span>{course.provider || new URL(course.url).hostname.replace(/^www\./, "")}</span>
+          {course.free === true && <span className="rounded-full bg-ok-soft px-2 text-[12px] text-ok">Free</span>}
+          {course.free === false && <span>Paid</span>}
+          {course.level && <span className="capitalize">· {course.level}</span>}
+          {course.duration && <span>· {course.duration}</span>}
+        </p>
+        {course.why && <p className="mt-1 text-[13px] leading-snug text-muted">{course.why}</p>}
+      </div>
+      <div className="flex shrink-0 gap-2">
+        <a
+          href={course.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-9 items-center rounded-full border border-hair bg-white px-4 text-sm font-medium hover:bg-surface"
+          aria-label={`Open ${course.title} (opens in a new tab)`}
+        >
+          Open ↗
+        </a>
+        <button
+          type="button"
+          aria-pressed={saved}
+          onClick={toggle}
+          className={`inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-medium ${saved ? "bg-learn text-white" : "bg-learn-soft text-learn-ink hover:bg-line"}`}
+          aria-label={`${saved ? "Unsave" : "Save"} ${course.title}`}
+        >
+          {saved && <CheckIcon size={12} />}
+          {saved ? "Saved" : "Save"}
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function Courses({ app, skill }: { app: Application; skill: string }) {
+  const profile = useApp((s) => s.profile);
+  const updateApplication = useApp((s) => s.updateApplication);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const found = app.courses?.[courseKey(skill)];
+
+  const search = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await findCourses(skill, app.jd?.title ?? "", profile?.skills.map((s) => s.name) ?? []);
+      const latest = useApp.getState().applications.find((a) => a.id === app.id);
+      updateApplication(app.id, { courses: { ...(latest?.courses ?? {}), [courseKey(skill)]: { ...result, searchedAt: Date.now() } } });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-line pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[15px] font-semibold">Courses for {skill}</p>
+          <p className="text-[13px] text-muted">
+            {found?.source === "web"
+              ? `Found on the web ${new Date(found.searchedAt).toLocaleDateString()}. Check the price and dates on each site.`
+              : found?.source === "search"
+                ? "Live course search isn’t available right now, so here are searches on major course sites."
+                : "Search the web for current courses that teach this skill."}
+          </p>
+        </div>
+        <Button variant={found ? "ghost" : "learn"} size="sm" loading={busy} onClick={search}>
+          {found ? "Search again" : "Find courses"}
+        </Button>
+      </div>
+      {busy && <Steps steps={["Searching course sites", "Checking level and price", "Keeping only real course pages"]} />}
+      {error && <ErrorBox message={error} onRetry={search} />}
+      {found && !busy && (
+        <ul className="flex flex-col gap-2">
+          {found.courses.map((c) => (
+            <CourseRow key={c.id} course={c} />
+          ))}
+          {!found.courses.length && <li className="text-[15px] text-muted">No courses found. Try searching again.</li>}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function SavedCourses() {
+  const saved = useApp((s) => s.account?.savedCourses);
+  if (!saved?.length) return null;
+  return (
+    <section className="rounded-[30px] border border-line p-7 md:p-10">
+      <h2 className="text-[28px] font-semibold tracking-[-0.02em]">Saved courses</h2>
+      <p className="mt-1 text-[15px] text-muted">Kept on your account, across every resume.</p>
+      <ul className="mt-5 flex flex-col gap-2">
+        {saved.map((c) => (
+          <CourseRow key={c.url} course={c} />
+        ))}
+      </ul>
     </section>
   );
 }
@@ -278,6 +405,20 @@ function GrowStep({ app }: { app: Application }) {
   const requirements = app.match?.requirements ?? [];
   const current = app.match?.score ?? 0;
   const forecast = requirements.length && plan.length ? potentialScore(requirements, plan.map((g) => g.skill)) : current;
+  const imported = useApp((s) => s.account?.linkedin?.imported);
+  const gapSkills = [...plan.map((g) => g.skill), ...requirements.filter((r) => r.status !== "strong" && r.type !== "education").map((r) => r.requirement)];
+
+  // Skills added from LinkedIn count as evidence, so refresh the match score.
+  const rematch = async () => {
+    const latest = useApp.getState().profile;
+    if (!latest || !app.jd) return;
+    try {
+      updateApplication(app.id, { match: await match(latest, app.jd) });
+    } catch {
+      toast("Couldn’t refresh your match score. It updates next time you open the match.");
+    }
+  };
+  const gapBadge = (skill: string) => (imported && hasSkill(imported, skill) ? "Listed on your LinkedIn" : undefined);
 
   return (
     <main className="mx-auto max-w-[1000px] px-6 pb-24 pt-16">
@@ -310,7 +451,11 @@ function GrowStep({ app }: { app: Application }) {
           </span>
         </div>
       )}
-      <div className="mt-9 flex flex-col gap-3.5">
+      <div className="mt-9">
+        <LinkedInImport returnTo="/new/grow" gapSkills={gapSkills} onApplied={() => void rematch()} />
+      </div>
+      <h2 className="mt-12 text-[28px] font-semibold tracking-[-0.02em]">Skill gaps</h2>
+      <div className="mt-4 flex flex-col gap-3.5">
         {busy && (
           <div className="rounded-[26px] border border-line p-8">
             <Steps steps={["Looking at your gaps", "Finding free resources", "Designing mini-projects"]} />
@@ -325,10 +470,16 @@ function GrowStep({ app }: { app: Application }) {
             open={Boolean(open[i])}
             done={app.planDone}
             gain={requirements.length ? pointsFor(requirements, gap.skill) : undefined}
+            badge={gapBadge(gap.skill)}
             onToggleOpen={() => setOpen({ ...open, [i]: !open[i] })}
             onToggleStep={(key) => updateApplication(app.id, { planDone: { ...app.planDone, [key]: !app.planDone[key] } })}
-          />
+          >
+            <Courses app={app} skill={gap.skill} />
+          </GapCard>
         ))}
+      </div>
+      <div className="mt-6">
+        <SavedCourses />
       </div>
       <div className="mt-12">
         <InterviewPrep app={app} />

@@ -1,6 +1,7 @@
 // AI output is untrusted: coerce every response into the exact shape the UI expects.
 import type {
   BulletCoaching,
+  Course,
   Gap,
   Insights,
   InterviewQuestion,
@@ -313,4 +314,25 @@ export function normalizeProofCheck(v: unknown, kind: "certificate" | "experienc
           : "We couldn't read the key details. Try a clearer photo or the original PDF.";
   }
   return check;
+}
+
+/** Courses from web search. The server already dropped any link that wasn't in the search results. */
+export function normalizeCourses(v: unknown, skill: string): Course[] {
+  const seen = new Set<string>();
+  return arr(obj(v).courses)
+    .map(obj)
+    .map((c, i) => ({
+      id: `course_${i}_${str(c.url).replace(/[^a-z0-9]/gi, "").slice(-24)}`,
+      skill,
+      title: str(c.title).trim(),
+      provider: str(c.provider).trim(),
+      url: str(c.url).trim(),
+      free: typeof c.free === "boolean" ? c.free : null,
+      level: str(c.level).trim(),
+      duration: str(c.duration).trim(),
+      why: str(c.why).trim(),
+      source: "web" as const,
+    }))
+    .filter((c) => c.title && /^https:\/\//.test(c.url) && !seen.has(c.url) && seen.add(c.url))
+    .slice(0, 5);
 }

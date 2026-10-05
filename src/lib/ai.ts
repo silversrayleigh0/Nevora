@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type {
   AiTask,
   BulletCoaching,
+  Course,
   CoverLetter,
   Gap,
   Insights,
@@ -33,6 +34,7 @@ import {
 import { MAX_UPLOAD_BYTES, proofImage, resumeText } from "./extract";
 import {
   normalizeCoaching,
+  normalizeCourses,
   normalizeInsights,
   normalizeInterview,
   normalizeJD,
@@ -113,7 +115,7 @@ async function ask(task: AiTask, input: unknown, image?: string): Promise<unknow
     useAiStatus.setState({ available: false, reason: "failing" });
     return null;
   }
-  throw new Error(body.error?.message || "Something went wrong. Try again.");
+  throw Object.assign(new Error(body.error?.message || "Something went wrong. Try again."), { code: body.error?.code ?? "" });
 }
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -253,4 +255,43 @@ export function coachBullet(line: string): Promise<BulletCoaching> {
     const coaching = data ? normalizeCoaching(data) : null;
     return coaching?.improved ? coaching : localCoach(line);
   });
+}
+
+/** Search pages on well-known course sites. Used when web search isn't available; nothing is made up. */
+export function courseSearchLinks(skill: string): Course[] {
+  const q = encodeURIComponent(skill);
+  const sites: [string, string, boolean | null][] = [
+    ["Coursera", `https://www.coursera.org/search?query=${q}`, null],
+    ["edX", `https://www.edx.org/search?q=${q}`, null],
+    ["freeCodeCamp", `https://www.freecodecamp.org/news/search/?query=${q}`, true],
+    ["YouTube", `https://www.youtube.com/results?search_query=${encodeURIComponent(`${skill} full course`)}`, true],
+    ["Udemy", `https://www.udemy.com/courses/search/?q=${q}`, null],
+  ];
+  return sites.map(([provider, url, free]) => ({
+    id: `search_${provider.toLowerCase()}_${skill.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+    skill,
+    title: `${skill} courses on ${provider}`,
+    provider,
+    url,
+    free,
+    level: "",
+    duration: "",
+    why: "",
+    source: "search" as const,
+  }));
+}
+
+/**
+ * Finds real, current courses for a skill with Claude's web search. Without AI (or when
+ * web search isn't available) it returns search links on major course sites instead.
+ */
+export async function findCourses(skill: string, role: string, known: string[]): Promise<{ courses: Course[]; source: "web" | "search" }> {
+  try {
+    const data = await ask("findCourses", { skill, role, known: known.slice(0, 20) });
+    const courses = data ? normalizeCourses(data, skill) : [];
+    if (courses.length) return { courses, source: "web" };
+  } catch (err) {
+    if ((err as { code?: string }).code !== "search_unavailable") throw err;
+  }
+  return { courses: courseSearchLinks(skill), source: "search" };
 }

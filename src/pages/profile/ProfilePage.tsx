@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { CheckIcon, InfoIcon } from "../../components/icons";
 import { AppHeader, RequireSession, SetupHeader } from "../../components/layout";
+import LinkedInImport from "../../components/LinkedInImport";
 import { Button, ErrorBox } from "../../components/ui";
 import { insights } from "../../lib/ai";
 import { useApp } from "../../store/app";
@@ -51,6 +52,11 @@ function ProfileBody({ setup }: { setup: boolean }) {
           {attention ? ` ${attention} section${attention > 1 ? "s need" : " needs"} your attention.` : " Looking complete."}
         </span>
       </div>
+      {!setup && (
+        <div className="mt-6">
+          <LinkedInImport returnTo="/profile" />
+        </div>
+      )}
       <div className="mt-9 flex items-start gap-12">
         <nav aria-label="Profile sections" className="sticky top-24 hidden w-[220px] shrink-0 flex-col gap-1 text-[15px] lg:flex">
           {PROFILE_SECTIONS.map(([key, label]) => {

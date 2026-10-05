@@ -1,9 +1,9 @@
 import { FIREBASE_WEB_CONFIG } from "../../shared/firebaseConfig.js";
 import type { AiTask } from "../../shared/types.js";
 import { HttpError, verifyFirebaseToken } from "./auth.js";
-import { claudeJson } from "./claude.js";
+import { claudeJson, type WebAnswer } from "./claude.js";
 import { chatJson, type ChatContent } from "./openrouter.js";
-import { IMAGE_TASKS, MAX_TOKENS, PROMPTS, QUICK_TASKS, TEMPERATURE } from "./prompts.js";
+import { IMAGE_TASKS, keepCitedCourses, MAX_TOKENS, PROMPTS, QUICK_TASKS, TEMPERATURE, WEB_TASKS } from "./prompts.js";
 import { takeToken } from "./rateLimit.js";
 
 export type Env = {
@@ -82,6 +82,8 @@ export async function handleAi(req: AiRequest, env: Env, providers: Providers = 
     if (!takeToken(uid, perHour)) throw new HttpError(429, "rate_limited", "You've made a lot of requests. Wait a few minutes, then try again.");
 
     const maxTokens = MAX_TOKENS[task] ?? 2000;
+    const web = WEB_TASKS.has(task);
+    if (web && !claudeKey) throw new HttpError(503, "search_unavailable", "Web search needs the Claude API, which isn't set up on this server.");
     let lastError: HttpError | null = null;
 
     // 1. Claude (primary)
@@ -95,13 +97,21 @@ export async function handleAi(req: AiRequest, env: Env, providers: Providers = 
           effort: QUICK_TASKS.has(task) ? "low" : (EFFORT[task] ?? "low"),
           // Thinking is always on for this model, so leave room above the answer itself.
           maxTokens: Math.max(16_000, maxTokens * 2),
+          webSearch: web,
         });
+        if (web) {
+          const answer = data as WebAnswer;
+          return { status: 200, body: { data: keepCitedCourses(answer.data, answer.sources), provider: "claude" } };
+        }
         return { status: 200, body: { data, provider: "claude" } };
       } catch (err) {
         lastError = err instanceof HttpError ? err : new HttpError(502, "upstream_error", "Claude returned an error.");
         console.warn(`[ai] claude failed for ${task}: ${lastError.code} ${lastError.message}`);
       }
     }
+
+    // Only Claude can search the web; don't let another model make up course links.
+    if (web) throw new HttpError(503, "search_unavailable", lastError?.message ?? "Web search isn't available right now.");
 
     // 2. OpenRouter, trying each configured key in order
     for (const [index, apiKey] of openrouterKeys.entries()) {

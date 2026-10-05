@@ -34,7 +34,39 @@ export type Account = {
   status: CareerStatus;
   gradYear: string;
   interests: string[];
+  linkedin?: LinkedInData;
+  savedCourses?: Course[];
 };
+
+/** Identity shared by "Sign in with LinkedIn" (OpenID Connect). LinkedIn gives nothing more to standard apps. */
+export type LinkedInIdentity = { sub: string; name: string; email: string; picture: string; connectedAt: number };
+
+/** LinkedIn details kept on the account: who connected, and what their exported profile PDF contained. */
+export type LinkedInData = {
+  identity?: LinkedInIdentity;
+  /** Parsed from the LinkedIn "Save to PDF" export. */
+  imported?: Profile;
+  importedAt?: number;
+  fileName?: string;
+  /** Suggestion keys the person chose not to add. */
+  dismissed?: string[];
+};
+
+/** A course found by web search (source "web") or a search link built without AI (source "search"). */
+export type Course = {
+  id: string;
+  skill: string;
+  title: string;
+  provider: string;
+  url: string;
+  free: boolean | null;
+  level: string;
+  duration: string;
+  why: string;
+  source: "web" | "search";
+};
+
+export type CourseSearch = { courses: Course[]; searchedAt: number; source: "web" | "search" };
 
 export type Insights = {
   strengths: { area: string; level: "Strong" | "Growing" | "Beginner"; score: number }[];
@@ -177,6 +209,8 @@ export type Application = {
   interview?: InterviewQuestion[] | null;
   versions?: ResumeVersion[];
   template?: TemplateId;
+  /** Course search results per gap skill (lowercase key). */
+  courses?: Record<string, CourseSearch>;
 };
 
 export type TemplateId = "classic" | "modern" | "traditional" | "professional" | "corporate" | "centered";
@@ -193,4 +227,5 @@ export type AiTask =
   | "learningPlan"
   | "coverLetter"
   | "interviewPrep"
-  | "coachBullet";
+  | "coachBullet"
+  | "findCourses";
