@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { GoogleIcon } from "../components/icons";
-import { Logo } from "../components/layout";
+import { Logo, ThemeToggle } from "../components/layout";
 import { Button, TextField } from "../components/ui";
 import { firebaseConfigured } from "../lib/firebase";
 import { authCode, authMessage, redirectError, resetPassword, signInEmail, signInGoogle, signUpEmail } from "../lib/session";
@@ -76,7 +76,10 @@ export default function Login() {
   return (
     <div className="flex min-h-screen">
       <div className="flex w-full flex-col px-6 py-12 md:px-16 lg:w-1/2">
-        <Logo />
+        <div className="flex items-center justify-between">
+          <Logo />
+          <ThemeToggle />
+        </div>
         <form onSubmit={submit} noValidate className="mx-auto my-auto flex w-full max-w-[400px] flex-col gap-3.5 py-12">
           <h1 className="text-[40px] font-semibold tight">
             {view === "in" ? "Sign in to Nevora" : view === "up" ? "Create your account" : "Reset your password"}

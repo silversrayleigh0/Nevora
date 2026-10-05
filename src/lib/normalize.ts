@@ -70,6 +70,7 @@ export function normalizeProfile(input: unknown): Profile {
       phone: str(basics.phone),
       location: str(basics.location),
       links: strings(basics.links),
+      ...(typeof basics.photo === "string" && /^data:image\/(jpeg|png);base64,/.test(basics.photo) && basics.photo.length < 300_000 ? { photo: basics.photo } : {}),
     },
     summary: str(p.summary),
     education: arr(p.education).map((e, i) => {

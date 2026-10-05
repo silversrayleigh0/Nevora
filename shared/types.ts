@@ -5,7 +5,8 @@ export type Bullet = { id: string; text: string };
 export type SkillCategory = "language" | "framework" | "tool" | "concept" | "soft";
 
 export type Profile = {
-  basics: { name: string; email: string; phone: string; location: string; links: string[] };
+  /** photo: optional square JPEG data URL, used only by photo templates. */
+  basics: { name: string; email: string; phone: string; location: string; links: string[]; photo?: string };
   summary: string;
   education: {
     id: string;
@@ -156,6 +157,7 @@ export type ResumeVersion = {
   kind: "generated" | "edited" | "downloaded";
   resume: TailoredResume;
   hiddenSections: ToggleSection[];
+  template?: TemplateId;
 };
 
 export type Application = {
@@ -174,7 +176,10 @@ export type Application = {
   coverLetter?: CoverLetter | null;
   interview?: InterviewQuestion[] | null;
   versions?: ResumeVersion[];
+  template?: TemplateId;
 };
+
+export type TemplateId = "classic" | "modern" | "traditional" | "professional" | "corporate" | "centered";
 
 /** Tasks the AI endpoint accepts. Prompts live on the server only. */
 export type AiTask =

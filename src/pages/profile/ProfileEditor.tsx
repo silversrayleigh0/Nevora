@@ -1,11 +1,13 @@
 import { useRef, useState, type ReactNode } from "react";
 import type { Bullet, Profile, Proof, ProofCheck, SkillCategory } from "../../../shared/types";
+import { Dropdown } from "../../components/Dropdown";
 import { MonthYearField, SelectField, SkillPicker, YearField } from "../../components/form";
 import { AwardIcon, CheckIcon, CloseIcon, ShieldIcon, UploadIcon } from "../../components/icons";
 import { Button, Chip, TextField } from "../../components/ui";
 import { verifyDocument, type ProofKind } from "../../lib/ai";
 import { PROOF_ACCEPT } from "../../lib/extract";
 import { BRANCHES, categorize, DEGREES } from "../../lib/options";
+import { profilePhoto } from "../../lib/templates";
 import { newId } from "../../store/app";
 import { toast } from "../../store/toast";
 
@@ -116,13 +118,14 @@ function Skills({ profile, update }: { profile: Profile; update: Update }) {
         <label htmlFor="skill-cat" className="sr-only">
           Category for new skills you type
         </label>
-        <select id="skill-cat" title="Category for skills you type yourself" className="input sm:w-44" value={category} onChange={(e) => setCategory(e.target.value as SkillCategory)}>
-          {CATEGORIES.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.label}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          id="skill-cat"
+          ariaLabel="Category for skills you type yourself"
+          className="sm:w-44"
+          value={category}
+          options={CATEGORIES.map((c) => ({ value: c.id, label: c.label }))}
+          onChange={(v) => setCategory(v as SkillCategory)}
+        />
       </div>
     </Section>
   );
@@ -263,6 +266,53 @@ function Certifications({ profile, update }: { profile: Profile; update: Update 
   );
 }
 
+function PhotoField({ photo, onChange }: { photo?: string; onChange: (photo: string | undefined) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState("");
+  const pick = async (file?: File) => {
+    if (!file) return;
+    setError("");
+    try {
+      onChange(await profilePhoto(file));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      if (input.current) input.current.value = "";
+    }
+  };
+  return (
+    <div className="flex items-center gap-4 rounded-2xl bg-surface p-4">
+      {photo ? (
+        <img src={photo} alt="Your profile photo" className="h-16 w-16 shrink-0 rounded-full object-cover" />
+      ) : (
+        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white text-muted">
+          <UploadIcon size={20} />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-[15px] font-medium">Profile photo <span className="font-normal text-muted">(optional)</span></div>
+        <div className="mt-0.5 text-sm text-muted">Only used by the photo templates. A clear, front-facing headshot works best.</div>
+        {error && (
+          <p role="alert" className="mt-1 text-sm text-bad">
+            {error}
+          </p>
+        )}
+      </div>
+      <input ref={input} type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Upload a profile photo" onChange={(e) => pick(e.target.files?.[0])} />
+      <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row">
+        <Button variant="secondary" size="sm" onClick={() => input.current?.click()}>
+          {photo ? "Change" : "Upload"}
+        </Button>
+        {photo && (
+          <Button variant="ghost" size="sm" onClick={() => onChange(undefined)}>
+            Remove
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const findLink = (links: string[], re: RegExp) => links.find((l) => re.test(l)) ?? "";
 
 export default function ProfileEditor({ profile, onChange }: { profile: Profile; onChange: (p: Profile) => void }) {
@@ -286,6 +336,17 @@ export default function ProfileEditor({ profile, onChange }: { profile: Profile;
           <TextField label="Phone" value={b.phone} onChange={(e) => setBasics({ phone: e.target.value })} />
           <TextField label="City" value={b.location} onChange={(e) => setBasics({ location: e.target.value })} />
         </div>
+        <PhotoField
+          photo={b.photo}
+          onChange={(photo) =>
+            update((p) => {
+              const basics = { ...p.basics };
+              if (photo) basics.photo = photo;
+              else delete basics.photo;
+              return { ...p, basics };
+            })
+          }
+        />
       </Section>
 
       <Section

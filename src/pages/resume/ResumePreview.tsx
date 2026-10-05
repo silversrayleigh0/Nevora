@@ -3,11 +3,32 @@ import type { Profile, ResumeItem, TailoredBullet, TailoredResume, ToggleSection
 import { CloseIcon } from "../../components/icons";
 import { Placeholders } from "../../components/ui";
 import { contactLine, SECTION_TITLES } from "../../lib/pdf";
+import { templateFor, type TemplateSpec } from "../../lib/templates";
 import { newId } from "../../store/app";
 
-const SectionTitle = ({ children }: { children: string }) => (
-  <h3 className="mb-1.5 border-b border-hair pb-[3px] text-[11px] font-bold tracking-[0.08em]">{children}</h3>
-);
+function SectionTitle({ children, spec }: { children: string; spec: TemplateSpec }) {
+  const color = spec.accent === "#1d1d1f" ? undefined : spec.accent;
+  const border = spec.heading === "accent" ? { borderBottom: `1.5px solid ${spec.accent}` } : spec.heading === "rule" ? { borderBottom: "1px solid #d2d2d7" } : {};
+  return (
+    <h3 className="mb-1.5 pb-[3px] text-[11px] font-bold tracking-[0.08em]" style={{ color, ...border }}>
+      {children}
+    </h3>
+  );
+}
+
+function Photo({ src, spec, size }: { src?: string; spec: TemplateSpec; size: number }) {
+  const radius = spec.photoShape === "circle" ? "9999px" : "12%";
+  if (!src)
+    return (
+      <div
+        className="flex shrink-0 items-center justify-center bg-[#f2f2f5] text-center text-[9px] leading-tight text-[#8e8e93] print:hidden"
+        style={{ width: size, height: size, borderRadius: radius }}
+      >
+        Add a photo in your profile
+      </div>
+    );
+  return <img src={src} alt="" className="shrink-0 object-cover" style={{ width: size, height: size, borderRadius: radius }} />;
+}
 
 const MARK = "rounded-[3px] bg-metric px-1 text-inherit print:bg-transparent";
 
@@ -95,12 +116,16 @@ type Props = {
   hidden: ToggleSection[];
   verifications: Verification[] | null;
   editing: boolean;
+  spec?: TemplateSpec;
   onEditBullet: (id: string, text: string) => void;
   /** Edit mode: replace the whole resume. Bullet ids that changed are reported so they can be re-checked. */
   onChange: (next: TailoredResume, changedBulletIds: string[]) => void;
 };
 
-export default function ResumePreview({ resume, profile, hidden, verifications, editing, onEditBullet, onChange }: Props) {
+export default function ResumePreview({ resume, profile, hidden, verifications, editing, spec = templateFor(), onEditBullet, onChange }: Props) {
+  const compact = spec.density === "compact";
+  const center = spec.align === "center" || spec.photo === "center";
+  const nameColor = spec.accent === "#1d1d1f" ? undefined : spec.accent;
   const show = (key: ToggleSection) => !hidden.includes(key);
   const flagFor = (id: string) => verifications?.find((v) => v.bulletId === id);
   const header = resumeHeader(resume, profile);
@@ -123,28 +148,38 @@ export default function ResumePreview({ resume, profile, hidden, verifications, 
     <article
       id="resume-print"
       aria-label="Resume preview"
-      className={`mx-auto flex w-full max-w-[640px] flex-col gap-3.5 rounded-md bg-white px-8 py-10 text-[11.5px] leading-normal text-ink shadow-[0_12px_40px_rgba(0,0,0,0.08)] sm:px-[52px] sm:py-12 print:max-w-none print:px-[18mm] print:py-[16mm] ${
-        editing ? "ring-2 ring-brand/40" : ""
-      }`}
-      style={{ fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif", minHeight: 905 }}
+      className={`paper mx-auto flex w-full max-w-[640px] flex-col overflow-hidden rounded-md bg-white px-8 py-10 leading-normal text-ink shadow-[0_12px_40px_rgba(0,0,0,0.08)] sm:px-[52px] sm:py-12 print:max-w-none print:px-[18mm] print:py-[16mm] ${
+        compact ? "gap-2.5 text-[11px]" : "gap-3.5 text-[11.5px]"
+      } ${editing ? "ring-2 ring-brand/40" : ""}`}
+      style={{ fontFamily: spec.font === "serif" ? "Georgia, 'Times New Roman', Times, serif" : "'Helvetica Neue', Helvetica, Arial, sans-serif", minHeight: 905 }}
     >
-      <header className="flex flex-col gap-1">
-        {editing ? (
-          <>
-            <Field label="Name" value={header.name} onChange={(name) => onChange({ ...resume, header: { ...header, name } }, [])} className="text-2xl font-bold" />
-            <Field label="Contact line" value={header.contact} onChange={(contact) => onChange({ ...resume, header: { ...header, contact } }, [])} className="text-[#515154]" />
-          </>
-        ) : (
-          <>
-            <h2 className="text-2xl font-bold tracking-[-0.01em]">{header.name || "Your name"}</h2>
-            <p className="text-[#515154]">{header.contact}</p>
-          </>
-        )}
+      <header
+        className={`flex gap-4 ${spec.photo === "center" ? "flex-col items-center" : spec.photo === "right" ? "flex-row-reverse items-center" : "items-center"} ${
+          spec.band ? "-mx-8 -mt-10 px-8 pb-5 pt-10 sm:-mx-[52px] sm:-mt-12 sm:px-[52px] sm:pt-12" : ""
+        }`}
+        style={spec.band ? { background: spec.band } : undefined}
+      >
+        {spec.photo && <Photo src={profile.basics.photo} spec={spec} size={spec.photo === "center" ? 84 : 76} />}
+        <div className={`flex min-w-0 flex-1 flex-col gap-1 ${center ? "items-center text-center" : ""} ${spec.photo === "center" ? "w-full" : ""}`}>
+          {editing ? (
+            <>
+              <Field label="Name" value={header.name} onChange={(name) => onChange({ ...resume, header: { ...header, name } }, [])} className={`text-2xl font-bold ${center ? "text-center" : ""}`} />
+              <Field label="Contact line" value={header.contact} onChange={(contact) => onChange({ ...resume, header: { ...header, contact } }, [])} className={`text-[#515154] ${center ? "text-center" : ""}`} />
+            </>
+          ) : (
+            <>
+              <h2 className={`${compact ? "text-[22px]" : "text-2xl"} font-bold tracking-[-0.01em]`} style={{ color: nameColor }}>
+                {header.name || "Your name"}
+              </h2>
+              <p className="text-[#515154]">{header.contact}</p>
+            </>
+          )}
+        </div>
       </header>
 
       {show("summary") && (resume.summary || editing) && (
         <section>
-          <SectionTitle>SUMMARY</SectionTitle>
+          <SectionTitle spec={spec}>SUMMARY</SectionTitle>
           {editing ? (
             <Field label="Summary" multiline value={resume.summary} onChange={(summary) => onChange({ ...resume, summary }, [])} />
           ) : (
@@ -157,7 +192,7 @@ export default function ResumePreview({ resume, profile, hidden, verifications, 
 
       {show("skills") && (resume.skills.some((g) => g.items.length) || editing) && (
         <section>
-          <SectionTitle>SKILLS</SectionTitle>
+          <SectionTitle spec={spec}>SKILLS</SectionTitle>
           {editing ? (
             <div className="flex flex-col gap-1.5">
               {resume.skills.map((g, i) => (
@@ -196,7 +231,7 @@ export default function ResumePreview({ resume, profile, hidden, verifications, 
         .filter((s) => show(s.key) && s.items.length)
         .map((s) => (
           <section key={s.key}>
-            <SectionTitle>{SECTION_TITLES[s.key]}</SectionTitle>
+            <SectionTitle spec={spec}>{SECTION_TITLES[s.key]}</SectionTitle>
             <div className={`flex flex-col ${editing ? "gap-3" : "gap-1.5"}`}>
               {s.items.map((item, index) =>
                 editing ? (

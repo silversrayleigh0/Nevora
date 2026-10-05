@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router";
 import type { Application, ResumeItem, ResumeVersion, TailoredResume, ToggleSection } from "../../../shared/types";
 import { PencilIcon } from "../../components/icons";
 import { FlowPage } from "../../components/layout";
@@ -10,6 +11,8 @@ import { toast } from "../../store/toast";
 import CoverLetterDialog from "./CoverLetterDialog";
 import { ChangesPanel, VerifiedPanel, verificationSummary } from "./Panels";
 import ResumePreview from "./ResumePreview";
+import TemplatePicker, { TemplateThumb } from "./TemplatePicker";
+import { templateFor } from "../../lib/templates";
 
 const TOGGLES: [ToggleSection, string][] = [
   ["summary", "Summary"],
@@ -61,6 +64,8 @@ function ResumeStep({ app }: { app: Application }) {
   const [downloading, setDownloading] = useState(false);
   const [letterOpen, setLetterOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const navigate = useNavigate();
   const beforeEdit = useRef<{ resume: TailoredResume; verifications: Application["verifications"] } | null>(null);
   const started = useRef(false);
 
@@ -73,7 +78,15 @@ function ResumeStep({ app }: { app: Application }) {
       const latest = versions[0];
       // Skip exact repeats of the most recent copy.
       if (latest && JSON.stringify(latest.resume) === JSON.stringify(resume) && latest.kind === kind) return;
-      const version: ResumeVersion = { id: newId("ver"), name: roleName(current), createdAt: Date.now(), kind, resume: structuredClone(resume), hiddenSections: [...hiddenSections] };
+      const version: ResumeVersion = {
+        id: newId("ver"),
+        name: roleName(current),
+        createdAt: Date.now(),
+        kind,
+        resume: structuredClone(resume),
+        hiddenSections: [...hiddenSections],
+        template: current.template ?? "classic",
+      };
       updateApplication(app.id, { versions: [version, ...versions].slice(0, MAX_VERSIONS) });
     },
     [app.id, updateApplication],
@@ -135,6 +148,7 @@ function ResumeStep({ app }: { app: Application }) {
     );
 
   const summary = verificationSummary(resume, app.verifications);
+  const spec = templateFor(app.template);
   const canDownload = !editing && !busy && !summary.bad.length && !summary.pending.length;
 
   const startEditing = () => {
@@ -172,7 +186,7 @@ function ResumeStep({ app }: { app: Application }) {
   };
   const openVersion = (v: ResumeVersion) => {
     saveVersion("edited", resume, app.hiddenSections);
-    updateApplication(app.id, { resume: structuredClone(v.resume), hiddenSections: v.hiddenSections, verifications: null });
+    updateApplication(app.id, { resume: structuredClone(v.resume), hiddenSections: v.hiddenSections, template: v.template ?? app.template, verifications: null });
     toast(`Opened the ${VERSION_LABEL[v.kind].toLowerCase()} version from ${formatWhen(v.createdAt)}`);
     void runVerify(v.resume);
   };
@@ -237,8 +251,11 @@ function ResumeStep({ app }: { app: Application }) {
     setDownloading(true);
     setError("");
     try {
-      await resumePdf(resume, profile, app.hiddenSections, fileSafe(`${resume.header?.name ?? profile.basics.name}_${roleName(app)}`) || "Resume");
+      await resumePdf(resume, profile, app.hiddenSections, fileSafe(`${resume.header?.name ?? profile.basics.name}_${roleName(app)}`) || "Resume", spec);
       saveVersion("downloaded", resume, app.hiddenSections);
+      // The resume is finished: go back home, where it's listed under My resumes.
+      toast(`Downloaded “${roleName(app)}”. It’s saved in My resumes.`);
+      navigate("/home#resumes");
     } catch {
       setError("Couldn't create the PDF. Try Copy text instead.");
     } finally {
@@ -257,6 +274,15 @@ function ResumeStep({ app }: { app: Application }) {
     <div className="min-h-[calc(100vh-64px)] bg-surface print:bg-white">
       <div className="no-print border-b border-line bg-white">
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-4 px-6 py-3.5 md:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              to="/home"
+              aria-label="Back to home"
+              title="Back to home"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-lg hover:bg-line"
+            >
+              ←
+            </Link>
           <div className="min-w-0">
             {renaming ? (
               <>
@@ -285,8 +311,9 @@ function ResumeStep({ app }: { app: Application }) {
               </button>
             )}
             <p className="mt-0.5 text-xs text-muted">
-              {sync === "device" ? "Saved on this device" : SAVE_LABEL[saveState]} · Match {app.match?.score}
+              {sync === "device" ? "Saved on this device" : SAVE_LABEL[saveState]} · Match {app.match?.score} · {spec.name} template
             </p>
+          </div>
           </div>
           {editing ? (
             <div className="flex flex-wrap items-center gap-2.5">
@@ -340,6 +367,23 @@ function ResumeStep({ app }: { app: Application }) {
       </div>
       <div className="mx-auto flex max-w-[1440px] flex-col gap-6 px-4 py-7 md:px-8 xl:flex-row">
         <aside className="no-print order-3 flex shrink-0 flex-col gap-4 xl:order-none xl:w-[240px]">
+          <div className="flex flex-col gap-3 rounded-[22px] bg-white p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Template</h2>
+              <span className="text-[13px] text-muted">{spec.name}</span>
+            </div>
+            <button type="button" onClick={() => setPickerOpen(true)} className="mx-auto w-[120px] transition hover:-translate-y-0.5" aria-label="Change template">
+              <TemplateThumb spec={spec} photo={profile.basics.photo} />
+            </button>
+            <Button variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
+              Change template
+            </Button>
+            {spec.photo && !profile.basics.photo && (
+              <Link to="/profile#basics" className="text-[13px] leading-snug text-brand">
+                Add a profile photo for this template ›
+              </Link>
+            )}
+          </div>
           <div className="flex flex-col gap-3 rounded-[22px] bg-white p-5">
             <h2 className="text-sm font-semibold">Sections</h2>
             {TOGGLES.map(([key, label]) => {
@@ -409,6 +453,7 @@ function ResumeStep({ app }: { app: Application }) {
             hidden={app.hiddenSections}
             verifications={app.verifications}
             editing={editing}
+            spec={spec}
             onEditBullet={editBullet}
             onChange={changeResume}
           />
@@ -448,6 +493,18 @@ function ResumeStep({ app }: { app: Application }) {
         </aside>
       </div>
       {letterOpen && <CoverLetterDialog app={app} onClose={() => setLetterOpen(false)} />}
+      {pickerOpen && (
+        <TemplatePicker
+          value={spec.id}
+          photo={profile.basics.photo}
+          onPick={(template) => {
+            updateApplication(app.id, { template });
+            setPickerOpen(false);
+            toast(`${templateFor(template).name} template applied`);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

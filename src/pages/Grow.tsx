@@ -340,9 +340,14 @@ function GrowStep({ app }: { app: Application }) {
         <Link to="/profile" className="text-base text-learn hover:text-learn-hover">
           Learned something new? Update your profile ›
         </Link>
-        <Button variant="dark" size="lg" href={app.resume ? "/new/resume" : "/new/match"}>
-          {app.resume ? "Back to my resume" : "Back to my match"}
-        </Button>
+        <div className="flex flex-wrap gap-3">
+          <Button variant="ghost" size="lg" href="/home">
+            Home
+          </Button>
+          <Button variant="dark" size="lg" href={app.resume ? "/new/resume" : "/new/match"}>
+            {app.resume ? "Back to my resume" : "Back to my match"}
+          </Button>
+        </div>
       </div>
     </main>
   );

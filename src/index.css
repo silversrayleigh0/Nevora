@@ -30,6 +30,87 @@
   --color-bad-soft: #ffecee;
 
   --color-metric: #fff3b0;
+  --color-card: #ffffff;
+  --color-page: #ffffff;
+}
+
+/* ---------- Dark theme ---------- */
+/* Tokens flip; the resume itself (.paper) stays a white page in both themes. */
+:root[data-theme="dark"] {
+  --color-ink: #f5f5f7;
+  --color-muted: #a1a1a6;
+  --color-hair: #48484a;
+  --color-line: #2c2c2e;
+  --color-surface: #1c1c1e;
+  --color-card: #151517;
+  --color-page: #0b0b0c;
+  --color-brand: #7c5cf5;
+  --color-brand-hover: #8f74f7;
+  --color-brand-ink: #c4b5fd;
+  --color-brand-soft: #241d3d;
+  --color-learn: #1595a8;
+  --color-learn-hover: #19a9be;
+  --color-learn-ink: #7dd3df;
+  --color-learn-soft: #10292d;
+  --color-ok: #4ade80;
+  --color-ok-soft: #10261a;
+  --color-warn: #fbbf24;
+  --color-warn-soft: #2b2110;
+  --color-bad: #ff6b6b;
+  --color-bad-soft: #2e1416;
+  --color-metric: #5c4a00;
+}
+
+.paper,
+:root[data-theme="dark"] .paper {
+  --color-ink: #1d1d1f;
+  --color-muted: #6e6e73;
+  --color-hair: #d2d2d7;
+  --color-line: #e8e8ed;
+  --color-surface: #f5f5f7;
+  --color-card: #ffffff;
+  --color-brand: #673cea;
+  --color-brand-ink: #4a22c7;
+  --color-brand-soft: #f3effe;
+  --color-bad: #c4001a;
+  --color-bad-soft: #ffecee;
+  --color-metric: #fff3b0;
+  color: var(--color-ink);
+  color-scheme: light;
+}
+
+/* Unlayered, so these beat the utility classes they adjust. */
+:root[data-theme="dark"] .bg-white:not(.paper .bg-white) {
+  background-color: var(--color-card);
+}
+:root[data-theme="dark"] .bg-white\/80,
+:root[data-theme="dark"] .bg-white\/72 {
+  background-color: color-mix(in srgb, var(--color-page) 78%, transparent);
+}
+:root[data-theme="dark"] .bg-ink {
+  background-color: #f5f5f7;
+  color: #1d1d1f;
+}
+:root[data-theme="dark"] .hover\:bg-black:hover {
+  background-color: #d2d2d7;
+}
+:root[data-theme="dark"] :is(.bg-\[\#F2F2F5\], .bg-\[\#f2f2f5\], .bg-\[\#E5E5EA\], .bg-\[\#e5e5ea\], .bg-\[\#EDEDF0\], .bg-\[\#E8E8ED\], .bg-\[\#FBFBFD\]):not(.paper *) {
+  background-color: #2c2c2e;
+}
+:root[data-theme="dark"] :is(.bg-\[\#D9D9DF\], .bg-\[\#d9d9df\], .bg-\[\#c7c7cc\], .bg-\[\#D9CCFB\]):not(.paper *) {
+  background-color: #3a3a3c;
+}
+:root[data-theme="dark"] :is(.border-\[\#EDEDF0\], .border-\[\#C7C7CC\]):not(.paper *) {
+  border-color: var(--color-line);
+}
+:root[data-theme="dark"] .text-\[\#9A0015\]:not(.paper *) {
+  color: #ff8a8a;
+}
+:root[data-theme="dark"] .hover\:bg-\[\#d8eff2\]:hover {
+  background-color: #133338;
+}
+:root[data-theme="dark"] .wordmark {
+  filter: invert(1) brightness(1.6);
 }
 
 @layer base {
@@ -37,6 +118,7 @@
     color-scheme: light;
   }
   html {
+    background: var(--color-page);
     -webkit-font-smoothing: antialiased;
     scroll-behavior: smooth;
     scroll-padding-top: calc(env(safe-area-inset-top, 0px) + 80px);
@@ -46,7 +128,8 @@
     margin: 0;
     color: var(--color-ink);
     font-family: var(--font-sans);
-    background: #fff;
+    background: var(--color-page);
+    transition: background-color 0.2s;
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
@@ -89,7 +172,7 @@
   }
   .input:focus {
     border-color: var(--color-brand);
-    background-color: #fff;
+    background-color: var(--color-card);
   }
   .input::placeholder {
     color: #8e8e93;
@@ -112,6 +195,37 @@
     padding: 14px 16px;
     line-height: 1.55;
   }
+  /* Frosted glass: translucent card over a blurred backdrop. */
+  .frost {
+    background: color-mix(in srgb, var(--color-card) 62%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-card) 75%, transparent);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, white 40%, transparent) inset,
+      0 10px 30px rgba(0, 0, 0, 0.08);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    backdrop-filter: blur(18px) saturate(160%);
+  }
+  .frost-panel {
+    background: color-mix(in srgb, var(--color-card) 84%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-line) 70%, transparent);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.18);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    backdrop-filter: blur(28px) saturate(170%);
+  }
+  .rise-fast {
+    animation: rise 0.18s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+  .pulse-dot {
+    position: relative;
+  }
+  .pulse-dot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: inherit;
+    animation: pulse-ring 1.8s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+  }
   .rise {
     animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
@@ -128,6 +242,17 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes pulse-ring {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(2.8);
+    opacity: 0;
   }
 }
 

@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { SkillCategory } from "../../shared/types";
+import { Dropdown } from "./Dropdown";
 import { formatMonthYear, MONTHS, OTHER, parseMonthYear, SKILL_CATALOG, YEARS } from "../lib/options";
 
 const Label = ({ htmlFor, label, optional }: { htmlFor: string; label: string; optional?: boolean }) => (
@@ -38,28 +39,21 @@ export function SelectField({
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
       <Label htmlFor={fid} label={label} optional={optional} />
-      <select
+      <Dropdown
         id={fid}
-        className="input"
         value={showOther ? OTHER : value}
-        onChange={(e) => {
-          if (e.target.value === OTHER) {
+        placeholder={placeholder}
+        options={[...options.map((o) => ({ value: o, label: o })), ...(allowOther ? [{ value: OTHER, label: "Other…" }] : [])]}
+        onChange={(v) => {
+          if (v === OTHER) {
             setTyping(true);
             onChange("");
           } else {
             setTyping(false);
-            onChange(e.target.value);
+            onChange(v);
           }
         }}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-        {allowOther && <option value={OTHER}>Other…</option>}
-      </select>
+      />
       {showOther && (
         <input
           aria-label={`${label} (type it)`}
@@ -99,35 +93,24 @@ export function MonthYearField({
     <div className="flex flex-col gap-2">
       <Label htmlFor={fid} label={label} />
       <div className="flex gap-2">
-        <select
+        <Dropdown
           id={fid}
-          aria-label={`${label} month`}
-          className="input"
+          ariaLabel={`${label} month`}
+          className="flex-1"
+          placeholder="Month"
           disabled={present}
           value={month}
-          onChange={(e) => onChange(formatMonthYear(e.target.value, year))}
-        >
-          <option value="">Month</option>
-          {MONTHS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label={`${label} year`}
-          className="input"
+          options={MONTHS.map((m) => ({ value: m, label: m }))}
+          onChange={(m) => onChange(formatMonthYear(m, year))}
+        />
+        <Dropdown
+          ariaLabel={`${label} year`}
+          className="flex-1"
+          placeholder="Year"
           value={present ? "present" : year}
-          onChange={(e) => onChange(e.target.value === "present" ? "Present" : formatMonthYear(month, e.target.value))}
-        >
-          <option value="">Year</option>
-          {allowPresent && <option value="present">Present</option>}
-          {YEARS.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
+          options={[...(allowPresent ? [{ value: "present", label: "Present" }] : []), ...YEARS.map((y) => ({ value: y, label: y }))]}
+          onChange={(v) => onChange(v === "present" ? "Present" : formatMonthYear(month, v))}
+        />
       </div>
     </div>
   );

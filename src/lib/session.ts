@@ -14,6 +14,7 @@ import {
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import type { Account, Application, Insights, Profile } from "../../shared/types";
 import { useApp, type AppState } from "../store/app";
+import { resetThemeOnSignIn } from "../store/theme";
 import { auth, db, firebaseConfigured } from "./firebase";
 import { normalizeInsights, normalizeProfile } from "./normalize";
 
@@ -57,7 +58,7 @@ export const authCode = (err: unknown) => (err as { code?: string })?.code ?? ""
 export async function redirectError(): Promise<unknown | null> {
   if (!auth) return null;
   try {
-    await getRedirectResult(auth);
+    if (await getRedirectResult(auth)) resetThemeOnSignIn();
     return null;
   } catch (err) {
     return err;
@@ -71,10 +72,12 @@ function requireAuth() {
 
 export async function signInEmail(email: string, password: string) {
   await signInWithEmailAndPassword(requireAuth(), email, password);
+  resetThemeOnSignIn();
 }
 
 export async function signUpEmail(email: string, password: string) {
   await createUserWithEmailAndPassword(requireAuth(), email, password);
+  resetThemeOnSignIn();
 }
 
 export async function signInGoogle() {
@@ -83,6 +86,7 @@ export async function signInGoogle() {
   provider.setCustomParameters({ prompt: "select_account" });
   try {
     await signInWithPopup(a, provider);
+    resetThemeOnSignIn();
   } catch (err) {
     if ((err as { code?: string }).code === "auth/popup-blocked") await signInWithRedirect(a, provider);
     else throw err;

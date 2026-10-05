@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { Chip } from "../components/ui";
 import { CheckIcon, ShieldIcon } from "../components/icons";
-import { Mark, Logo } from "../components/layout";
+import { Logo, Mark, ThemeToggle } from "../components/layout";
 import { isSignedIn, useApp } from "../store/app";
 
 /**
@@ -46,6 +46,7 @@ function LandingHeader() {
           </a>
         </nav>
         <div className="flex items-center gap-5">
+          <ThemeToggle />
           {signedIn ? (
             <Link to="/home" className="flex h-9 items-center rounded-full bg-ink px-[18px] text-sm font-medium text-white hover:bg-black">
               Open Nevora

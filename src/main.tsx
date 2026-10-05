@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "./store/theme";
 import { checkAi } from "./lib/ai";
 import { initSession } from "./lib/session";
 import { useApp } from "./store/app";

@@ -4,6 +4,7 @@ import type { Application } from "../../shared/types";
 import { useAiMode } from "../lib/ai";
 import { retryLoad, signOut } from "../lib/session";
 import { isSignedIn, useActiveApplication, useApp } from "../store/app";
+import { useTheme } from "../store/theme";
 import { useToasts, type Toast } from "../store/toast";
 import { Spinner } from "./icons";
 import { Button } from "./ui";
@@ -12,7 +13,7 @@ export function Logo({ to = "/" }: { to?: string }) {
   return (
     <Link to={to} className="flex items-center gap-2.5" aria-label="Nevora home">
       <img src="/nevora-mark.png" alt="" width={30} height={27} decoding="async" />
-      <img src="/nevora-wordmark.png" alt="Nevora" width={96} height={13} decoding="async" className="h-[13px] w-auto" />
+      <img src="/nevora-wordmark.png" alt="Nevora" width={96} height={13} decoding="async" className="wordmark h-[13px] w-auto" />
     </Link>
   );
 }
@@ -21,10 +22,46 @@ export function Mark({ size = 84 }: { size?: number }) {
   return <img src="/nevora-mark.png" alt="" width={size} height={Math.round(size * 0.91)} decoding="async" />;
 }
 
-const AI_BADGE = {
-  live: { label: "Live AI", dot: "bg-ok-dot", title: "AI answers are on. Every line is still checked against your profile." },
-  basic: { label: "Basic mode", dot: "bg-warn-dot", title: "AI isn't available right now. Everything works; answers are simpler." },
+const AI_STATUS = {
+  live: { label: "Live AI is on", dot: "bg-ok-dot" },
+  basic: { label: "Live AI is off — everything still works with simpler answers", dot: "bg-warn-dot" },
 };
+
+/** A small pulsing dot instead of a text badge; hover or focus explains it. */
+export function StatusDot({ mode }: { mode: keyof typeof AI_STATUS }) {
+  const s = AI_STATUS[mode];
+  return (
+    <span tabIndex={0} title={s.label} className="flex h-6 w-6 items-center justify-center rounded-full outline-none" role="img" aria-label={s.label}>
+      <span className={`pulse-dot h-2 w-2 rounded-full ${s.dot}`} />
+    </span>
+  );
+}
+
+export function ThemeToggle() {
+  const theme = useTheme((s) => s.theme);
+  const toggle = useTheme((s) => s.toggle);
+  const dark = theme === "dark";
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      title={dark ? "Light theme" : "Dark theme"}
+      className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-ink"
+    >
+      {dark ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.7" />
+          <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 /** Top bar for signed-in pages. `center` replaces the nav (used by the 4-step flow). */
 export function AppHeader({ center }: { center?: ReactNode }) {
@@ -65,7 +102,7 @@ export function AppHeader({ center }: { center?: ReactNode }) {
     { to: "/home#resumes", label: "My resumes" },
     { to: "/profile", label: "Profile" },
   ];
-  const badge = mode ? AI_BADGE[mode] : null;
+
   const sync = useApp((s) => s.sync);
 
   return (
@@ -93,12 +130,8 @@ export function AppHeader({ center }: { center?: ReactNode }) {
         </div>
         {center}
         <div ref={menu} className="relative flex items-center gap-3 md:gap-4">
-          {badge && (
-            <span title={badge.title} className="hidden items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-xs text-muted sm:inline-flex">
-              <span className={`h-1.5 w-1.5 rounded-full ${badge.dot}`} aria-hidden="true" />
-              {badge.label}
-            </span>
-          )}
+          {mode && <StatusDot mode={mode} />}
+          <ThemeToggle />
           {!center && (
             <Button size="sm" onClick={startNew} className="hidden sm:inline-flex">
               New resume
@@ -114,11 +147,15 @@ export function AppHeader({ center }: { center?: ReactNode }) {
             {initials}
           </button>
           {open && (
-            <div className="absolute right-0 top-12 w-56 rounded-2xl border border-line bg-white p-2 shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
-              <div className="px-3 py-2 text-sm">
-                <div className="font-medium">{account?.name || "Your account"}</div>
-                <div className="truncate text-muted">{account?.email}</div>
+            <div className="frost-panel rise-fast absolute right-0 top-12 w-64 rounded-2xl p-2">
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-soft text-[13px] font-semibold text-brand-ink">{initials}</span>
+                <div className="min-w-0 text-sm">
+                  <div className="truncate font-medium">{account?.name || "Your account"}</div>
+                  <div className="truncate text-muted">{account?.email}</div>
+                </div>
               </div>
+              <div className="my-1 h-px bg-line" />
               <div className="md:hidden">
                 <button
                   type="button"
@@ -140,7 +177,7 @@ export function AppHeader({ center }: { center?: ReactNode }) {
               <Link to="/profile" onClick={() => setOpen(false)} className="hidden rounded-xl px-3 py-2 text-sm hover:bg-surface md:block">
                 Edit profile
               </Link>
-              {badge && <p className="px-3 py-2 text-xs text-muted sm:hidden">{badge.label}</p>}
+
               <button
                 type="button"
                 onClick={async () => {
@@ -203,7 +240,10 @@ export function SetupHeader({ step }: { step: 1 | 2 | 3 }) {
     <>
       <header className="mx-auto flex h-16 max-w-[1344px] items-center justify-between px-6 md:px-12">
         <Logo />
-        <span className="text-sm text-muted">Step {step} of 3</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted">Step {step} of 3</span>
+          <ThemeToggle />
+        </div>
       </header>
       <div className="h-[3px] bg-[#F2F2F5]" role="progressbar" aria-valuenow={step} aria-valuemin={1} aria-valuemax={3} aria-label="Setup progress">
         <div className="h-[3px] bg-brand transition-all" style={{ width: `${(step / 3) * 100}%` }} />
