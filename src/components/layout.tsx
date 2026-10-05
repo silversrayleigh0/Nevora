@@ -66,9 +66,18 @@ export function AppHeader({ center }: { center?: ReactNode }) {
     { to: "/profile", label: "Profile" },
   ];
   const badge = mode ? AI_BADGE[mode] : null;
+  const sync = useApp((s) => s.sync);
 
   return (
     <header className="no-print sticky top-0 z-30 border-b border-line bg-white/80 backdrop-blur-xl">
+      {sync === "device" && (
+        <div className="flex items-center justify-center gap-3 bg-warn-soft px-4 py-2 text-center text-[13px] text-warn" role="status">
+          <span>Cloud sync is unavailable right now. Your work is saved on this device and will sync later.</span>
+          <button type="button" onClick={retryLoad} className="font-semibold underline-offset-2 hover:underline">
+            Retry
+          </button>
+        </div>
+      )}
       <div className="mx-auto flex h-16 max-w-[1344px] items-center justify-between gap-6 px-6 md:px-12">
         <div className="flex items-center gap-11">
           <Logo to="/home" />

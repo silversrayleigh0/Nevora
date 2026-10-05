@@ -26,6 +26,7 @@ const SAVE_LABEL = { idle: "Saved", saved: "Saved", saving: "Saving…", offline
 function ResumeStep({ app }: { app: Application }) {
   const profile = useApp((s) => s.profile);
   const saveState = useApp((s) => s.saveState);
+  const sync = useApp((s) => s.sync);
   const updateApplication = useApp((s) => s.updateApplication);
   const [panel, setPanel] = useState<"changes" | "verified">("changes");
   const [busy, setBusy] = useState<"" | "tailor" | "verify">("");
@@ -198,7 +199,7 @@ function ResumeStep({ app }: { app: Application }) {
               </button>
             )}
             <p className="mt-0.5 text-xs text-muted">
-              {SAVE_LABEL[saveState]} · Match {app.match?.score}
+              {sync === "device" ? "Saved on this device" : SAVE_LABEL[saveState]} · Match {app.match?.score}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">

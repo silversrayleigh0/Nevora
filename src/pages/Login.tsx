@@ -4,7 +4,7 @@ import { GoogleIcon } from "../components/icons";
 import { Logo } from "../components/layout";
 import { Button, TextField } from "../components/ui";
 import { firebaseConfigured } from "../lib/firebase";
-import { authMessage, resetPassword, signInEmail, signInGoogle, signUpEmail } from "../lib/session";
+import { authCode, authMessage, redirectError, resetPassword, signInEmail, signInGoogle, signUpEmail } from "../lib/session";
 import { useApp } from "../store/app";
 
 type View = "in" | "up" | "reset";
@@ -21,6 +21,17 @@ export default function Login() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState<"" | "email" | "google">("");
+  const [showPassword, setShowPassword] = useState(false);
+  // After Google fails because this site isn't allowed, point people to email instead.
+  const [googleBlocked, setGoogleBlocked] = useState(false);
+
+  useEffect(() => {
+    void redirectError().then((err) => {
+      if (!err) return;
+      setError(authMessage(err));
+      if (authCode(err) === "auth/unauthorized-domain") setGoogleBlocked(true);
+    });
+  }, []);
 
   // Once Firebase reports the session and the data has loaded, move on.
   useEffect(() => {
@@ -34,6 +45,7 @@ export default function Login() {
       await work();
     } catch (err) {
       setError(authMessage(err));
+      if (kind === "google" && authCode(err) === "auth/unauthorized-domain") setGoogleBlocked(true);
       setBusy("");
     }
   };
@@ -41,16 +53,18 @@ export default function Login() {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setNotice("");
-    if (!/^\S+@\S+\.\S+$/.test(email)) return setError("Enter a valid email address.");
+    const address = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return setError("Enter a valid email address.");
     if (view === "reset") {
       return run("email", async () => {
-        await resetPassword(email.trim());
+        await resetPassword(address);
         setNotice("If there's an account for that email, a reset link is on its way.");
         setBusy("");
       });
     }
-    if (password.length < 6) return setError("Use at least 6 characters for your password.");
-    run("email", () => (view === "in" ? signInEmail(email.trim(), password) : signUpEmail(email.trim(), password)));
+    if (!password) return setError("Enter your password.");
+    if (view === "up" && password.length < 6) return setError("Use at least 6 characters for your password.");
+    run("email", () => (view === "in" ? signInEmail(address, password) : signUpEmail(address, password)));
   };
 
   const switchView = (next: View) => {
@@ -88,6 +102,7 @@ export default function Login() {
                 {busy !== "google" && <GoogleIcon />}
                 Continue with Google
               </Button>
+              {googleBlocked && <p className="text-center text-[13px] text-muted">Google sign-in isn’t available on this website yet — use your email below.</p>}
               <div className="my-2 flex items-center gap-3.5 text-[13px] text-muted">
                 <span className="h-px flex-1 bg-line" />
                 or
@@ -106,16 +121,34 @@ export default function Login() {
             }}
           />
           {view !== "reset" && (
-            <TextField
-              label="Password"
-              type="password"
-              autoComplete={view === "in" ? "current-password" : "new-password"}
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setError("");
-              }}
-            />
+            <div className="flex flex-col gap-2">
+              <label htmlFor="f-password" className="text-sm font-medium">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="f-password"
+                  className="input pr-20"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete={view === "in" ? "current-password" : "new-password"}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError("");
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-pressed={showPassword}
+                  aria-controls="f-password"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-sm text-muted hover:text-ink"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              {view === "up" && <p className="text-[13px] text-muted">At least 6 characters.</p>}
+            </div>
           )}
           {view === "in" && (
             <button type="button" className="self-end text-sm text-brand hover:text-brand-hover" onClick={() => switchView("reset")}>

@@ -8,6 +8,8 @@ import type { Account, Application, Insights, Profile } from "../../shared/types
  */
 export type Mode = "loading" | "signedOut" | "cloud";
 export type SaveState = "idle" | "saving" | "saved" | "offline" | "error";
+/** "device" when cloud storage can't be reached: work is kept in this browser and uploaded later. */
+export type SyncTarget = "cloud" | "device";
 
 export type AppState = {
   mode: Mode;
@@ -18,6 +20,7 @@ export type AppState = {
   applications: Application[];
   activeId: string | null;
   saveState: SaveState;
+  sync: SyncTarget;
   /** Set when the signed-in user's data couldn't be loaded; saving is blocked until it loads. */
   loadError: string | null;
 
@@ -52,6 +55,7 @@ export const useApp = create<AppState>()((set, get) => ({
   applications: [],
   activeId: readActive(),
   saveState: "idle",
+  sync: "cloud",
   loadError: null,
 
   setAccount: (account) => set({ account }),
