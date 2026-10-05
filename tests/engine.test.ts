@@ -3,7 +3,8 @@ import type { Requirement, TailoredResume } from "../shared/types";
 import { localAnalyzeJD, localMatch, localTailor, localVerify, mentions, mergeVerifications, potentialScore, profileStrength, scoreMatch } from "../src/lib/engine";
 import { normalizeProfile, normalizeRequirements, normalizeResume } from "../src/lib/normalize";
 import { stripPlaceholders } from "../src/lib/pdf";
-import { demoState, SAMPLE_JD_TEXT } from "../src/lib/sample";
+import { SAMPLE_JD_TEXT } from "../src/lib/sample";
+import { demoState } from "./fixtures";
 
 const { profile } = demoState();
 const req = (requirement: string, type: Requirement["type"], status: Requirement["status"]): Requirement => ({ requirement, type, status, evidenceIds: [], note: "" });

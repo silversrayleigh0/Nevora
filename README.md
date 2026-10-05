@@ -23,7 +23,8 @@ Browser (React)                                   Vercel function /api/ai
   stays locked until every line passes.
 - **Basic mode.** If AI isn't configured or is unavailable, every step still works using the
   deterministic engine. It reuses the student's own words and never invents content.
-- **Demo account.** "Explore the demo" loads a sample student in the browser only.
+- **Sign-in.** Email/password or Google (Firebase Auth) are the only ways in. If a profile can't
+  be loaded, saving is blocked so an empty profile never overwrites real data.
 
 ## Run locally
 

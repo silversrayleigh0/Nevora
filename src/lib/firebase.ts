@@ -10,7 +10,7 @@ const config = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || FIREBASE_WEB_CONFIG.appId,
 };
 
-/** False until the Firebase web config is set; the demo still works without it. */
+/** False only if a build overrides the config with empty values. */
 export const firebaseConfigured = Boolean(config.apiKey && config.authDomain && config.projectId && config.appId);
 
 let app: FirebaseApp | null = null;

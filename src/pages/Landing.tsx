@@ -1,8 +1,7 @@
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { Chip } from "../components/ui";
 import { CheckIcon, ShieldIcon } from "../components/icons";
 import { Mark, Logo } from "../components/layout";
-import { startDemo } from "../lib/session";
 import { isSignedIn, useApp } from "../store/app";
 
 /**
@@ -16,22 +15,6 @@ const PROBLEM_STATS: { value: string; label: string }[] = [
 ];
 const FOOTER_LEFT = "Nevora · Built at BUILDATHON – Future Forge 2026, VELS University";
 const FOOTER_RIGHT = "";
-
-export function DemoButton({ className = "", children = "Explore the demo ›" }: { className?: string; children?: string }) {
-  const navigate = useNavigate();
-  return (
-    <button
-      type="button"
-      className={`text-brand hover:text-brand-hover ${className}`}
-      onClick={async () => {
-        await startDemo();
-        navigate("/home");
-      }}
-    >
-      {children}
-    </button>
-  );
-}
 
 function PrimaryCta() {
   const signedIn = isSignedIn(useApp((s) => s.mode));
@@ -173,7 +156,9 @@ function Hero() {
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-7">
           <PrimaryCta />
-          <DemoButton className="text-[17px]" />
+          <a href="#how" className="text-[17px] text-brand hover:text-brand-hover">
+            See how it works ›
+          </a>
         </div>
       </div>
       <HeroVisual />

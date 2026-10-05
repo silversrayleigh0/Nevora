@@ -4,7 +4,7 @@ import { GoogleIcon } from "../components/icons";
 import { Logo } from "../components/layout";
 import { Button, TextField } from "../components/ui";
 import { firebaseConfigured } from "../lib/firebase";
-import { authMessage, resetPassword, signInEmail, signInGoogle, signUpEmail, startDemo } from "../lib/session";
+import { authMessage, resetPassword, signInEmail, signInGoogle, signUpEmail } from "../lib/session";
 import { useApp } from "../store/app";
 
 type View = "in" | "up" | "reset";
@@ -14,6 +14,7 @@ export default function Login() {
   const [params] = useSearchParams();
   const mode = useApp((s) => s.mode);
   const profile = useApp((s) => s.profile);
+  const loadError = useApp((s) => s.loadError);
   const [view, setView] = useState<View>(params.get("new") ? "up" : "in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,8 +24,8 @@ export default function Login() {
 
   // Once Firebase reports the session and the data has loaded, move on.
   useEffect(() => {
-    if (mode === "cloud") navigate(profile ? "/home" : "/setup/details", { replace: true });
-  }, [mode, profile, navigate]);
+    if (mode === "cloud") navigate(loadError || profile ? "/home" : "/setup/details", { replace: true });
+  }, [mode, profile, loadError, navigate]);
 
   const run = async (kind: "email" | "google", work: () => Promise<void>) => {
     setBusy(kind);
@@ -71,7 +72,7 @@ export default function Login() {
           </p>
           {!firebaseConfigured && (
             <p className="rounded-2xl bg-warn-soft px-4 py-3 text-sm text-warn">
-              Sign-in isn’t set up on this server yet. You can still explore the demo account below.
+              Sign-in isn’t available right now. Please try again later.
             </p>
           )}
           {view !== "reset" && (
@@ -141,17 +142,6 @@ export default function Login() {
             </button>
           </p>
         </form>
-        <button
-          type="button"
-          onClick={async () => {
-            await startDemo();
-            navigate("/home");
-          }}
-          className="flex items-center gap-3 self-center rounded-2xl bg-surface px-5 py-3.5 text-[15px] hover:bg-line"
-        >
-          <span className="font-medium">Just looking?</span>
-          <span className="text-brand">Explore the demo account ›</span>
-        </button>
       </div>
       <div className="hidden w-1/2 flex-col justify-center gap-12 bg-surface px-22 py-24 lg:flex" aria-hidden="true">
         <h2 className="text-[52px] font-semibold leading-[1.05] tracking-[-0.04em]">

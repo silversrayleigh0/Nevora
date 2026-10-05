@@ -5,9 +5,8 @@ import type { Account, Application, Insights, Profile } from "../../shared/types
  * loading   – waiting for Firebase to report the session
  * signedOut – nobody signed in
  * cloud     – signed in; changes sync to Firestore
- * demo      – sample account kept in this browser only
  */
-export type Mode = "loading" | "signedOut" | "cloud" | "demo";
+export type Mode = "loading" | "signedOut" | "cloud";
 export type SaveState = "idle" | "saving" | "saved" | "offline" | "error";
 
 export type AppState = {
@@ -19,6 +18,8 @@ export type AppState = {
   applications: Application[];
   activeId: string | null;
   saveState: SaveState;
+  /** Set when the signed-in user's data couldn't be loaded; saving is blocked until it loads. */
+  loadError: string | null;
 
   setAccount: (account: Account) => void;
   setProfile: (profile: Profile) => void;
@@ -51,6 +52,7 @@ export const useApp = create<AppState>()((set, get) => ({
   applications: [],
   activeId: readActive(),
   saveState: "idle",
+  loadError: null,
 
   setAccount: (account) => set({ account }),
   setProfile: (profile) => set({ profile }),
@@ -106,4 +108,4 @@ useApp.subscribe((s, prev) => {
 export const useActiveApplication = () =>
   useApp((s) => s.applications.find((a) => a.id === s.activeId) ?? null);
 
-export const isSignedIn = (mode: Mode) => mode === "cloud" || mode === "demo";
+export const isSignedIn = (mode: Mode) => mode === "cloud";

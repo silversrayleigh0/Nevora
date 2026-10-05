@@ -1,4 +1,4 @@
-// Sign-in, demo mode, and keeping the store in sync with Firestore.
+// Sign-in and keeping the store in sync with Firestore.
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
@@ -15,9 +15,9 @@ import type { Account, Application } from "../../shared/types";
 import { useApp, type AppState } from "../store/app";
 import { auth, db, firebaseConfigured } from "./firebase";
 import { normalizeInsights, normalizeProfile } from "./normalize";
-import { demoState } from "./sample";
 
-const DEMO_KEY = "nevora-demo-v1";
+/** Left over from the retired demo account; removed on startup. */
+const LEGACY_DEMO_KEY = "nevora-demo-v1";
 
 // ---------- Auth ----------
 
@@ -30,7 +30,7 @@ const AUTH_ERRORS: Record<string, string> = {
   "auth/invalid-email": "Enter a valid email address.",
   "auth/too-many-requests": "Too many attempts. Wait a minute, then try again.",
   "auth/network-request-failed": "Couldn't reach the server. Check your connection.",
-  "auth/configuration-not-found": "Sign-in isn't switched on for this app yet. Try the demo for now.",
+  "auth/configuration-not-found": "Sign-in isn't switched on for this app yet.",
   "auth/operation-not-allowed": "This sign-in method isn't switched on yet. Try another one.",
   "auth/unauthorized-domain": "Sign-in isn't allowed from this web address yet.",
   "auth/popup-closed-by-user": "",
@@ -72,9 +72,7 @@ export async function resetPassword(email: string) {
 }
 
 export async function signOut() {
-  const { mode } = useApp.getState();
-  if (mode === "demo") clearDemo();
-  if (mode === "cloud" && auth) {
+  if (useApp.getState().mode === "cloud" && auth) {
     await flushNow();
     await fbSignOut(auth);
   }
@@ -87,45 +85,7 @@ export async function idToken(): Promise<string | null> {
 }
 
 function resetStore(mode: AppState["mode"]) {
-  useApp.setState({ mode, uid: null, account: null, profile: null, insights: null, applications: [], activeId: null, saveState: "idle" });
-}
-
-// ---------- Demo ----------
-
-function clearDemo() {
-  try {
-    localStorage.removeItem(DEMO_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-export async function startDemo() {
-  if (useApp.getState().mode === "cloud" && auth) {
-    await flushNow();
-    await fbSignOut(auth);
-  }
-  useApp.setState({ mode: "demo", uid: null, saveState: "idle", ...demoState() });
-}
-
-function restoreDemo(): boolean {
-  try {
-    const raw = localStorage.getItem(DEMO_KEY);
-    if (!raw) return false;
-    const saved = JSON.parse(raw) as Partial<AppState>;
-    if (!saved.profile) return false;
-    useApp.setState({
-      mode: "demo",
-      uid: null,
-      account: saved.account ?? null,
-      profile: normalizeProfile(saved.profile),
-      insights: saved.insights ?? null,
-      applications: saved.applications ?? [],
-    });
-    return true;
-  } catch {
-    return false;
-  }
+  useApp.setState({ mode, uid: null, account: null, profile: null, insights: null, applications: [], activeId: null, saveState: "idle", loadError: null });
 }
 
 // ---------- Firestore sync ----------
@@ -147,7 +107,7 @@ const defaultAccount = (user: User): Account => ({
 });
 
 async function loadUser(user: User) {
-  useApp.setState({ mode: "loading" });
+  useApp.setState({ mode: "loading", loadError: null });
   try {
     const [snap, apps] = await Promise.all([getDoc(userDoc(user.uid)), getDocs(collection(db!, "users", user.uid, "applications"))]);
     const data = snap.data() ?? {};
@@ -162,11 +122,27 @@ async function loadUser(user: User) {
       applications,
       activeId: applications.some((a) => a.id === activeId) ? activeId : null,
       saveState: "saved",
+      loadError: null,
     });
   } catch (err) {
+    // Never fall through to an empty profile: saving it would overwrite real data.
     console.error("[session] couldn't load your data", err);
-    useApp.setState({ mode: "cloud", uid: user.uid, account: defaultAccount(user), profile: null, insights: null, applications: [], saveState: "error" });
+    useApp.setState({
+      mode: "cloud",
+      uid: user.uid,
+      account: null,
+      profile: null,
+      insights: null,
+      applications: [],
+      saveState: "error",
+      loadError: "We couldn’t load your profile. Check your connection, then try again.",
+    });
   }
+}
+
+/** Retry after a failed load. */
+export function retryLoad() {
+  if (auth?.currentUser) void loadUser(auth.currentUser);
 }
 
 let userDirty = false;
@@ -177,7 +153,7 @@ let flushing: Promise<void> | null = null;
 
 async function flush() {
   const s = useApp.getState();
-  if (s.mode !== "cloud" || !s.uid || !db) return;
+  if (s.mode !== "cloud" || !s.uid || !db || s.loadError) return;
   const uid = s.uid;
   const writes: Promise<unknown>[] = [];
   if (userDirty) {
@@ -221,18 +197,7 @@ async function flushNow() {
 
 function watchStore() {
   useApp.subscribe((s, prev) => {
-    if (s.mode === "demo") {
-      try {
-        localStorage.setItem(
-          DEMO_KEY,
-          JSON.stringify({ account: s.account, profile: s.profile, insights: s.insights, applications: s.applications }),
-        );
-      } catch {
-        /* storage full or blocked: the demo just won't survive a reload */
-      }
-      return;
-    }
-    if (s.mode !== "cloud" || prev.mode !== "cloud" || s.uid !== prev.uid) return;
+    if (s.mode !== "cloud" || prev.mode !== "cloud" || s.uid !== prev.uid || s.loadError) return;
     if (s.account !== prev.account || s.profile !== prev.profile || s.insights !== prev.insights) userDirty = true;
     if (s.applications !== prev.applications) {
       const before = new Map(prev.applications.map((a) => [a.id, a]));
@@ -246,17 +211,18 @@ function watchStore() {
 
 /** Called once at startup. */
 export function initSession() {
+  try {
+    localStorage.removeItem(LEGACY_DEMO_KEY);
+  } catch {
+    /* storage blocked */
+  }
   watchStore();
   if (!firebaseConfigured || !auth) {
-    if (!restoreDemo()) resetStore("signedOut");
+    resetStore("signedOut");
     return;
   }
   onAuthStateChanged(auth, (user) => {
-    if (user) {
-      clearDemo();
-      void loadUser(user);
-    } else if (useApp.getState().mode !== "demo" && !restoreDemo()) {
-      resetStore("signedOut");
-    }
+    if (user) void loadUser(user);
+    else resetStore("signedOut");
   });
 }

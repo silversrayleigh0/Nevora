@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import type { Application } from "../../shared/types";
 import { useAiMode } from "../lib/ai";
-import { signOut } from "../lib/session";
+import { retryLoad, signOut } from "../lib/session";
 import { isSignedIn, useActiveApplication, useApp } from "../store/app";
 import { useToasts, type Toast } from "../store/toast";
 import { Button } from "./ui";
@@ -23,7 +23,6 @@ export function Mark({ size = 84 }: { size?: number }) {
 const AI_BADGE = {
   live: { label: "Live AI", dot: "bg-ok-dot", title: "AI answers are on. Every line is still checked against your profile." },
   basic: { label: "Basic mode", dot: "bg-warn-dot", title: "AI isn't available right now. Everything works; answers are simpler." },
-  demo: { label: "Demo mode", dot: "bg-hair", title: "A sample account kept in this browser. Sign up to save your own." },
 };
 
 /** Top bar for signed-in pages. `center` replaces the nav (used by the 4-step flow). */
@@ -247,17 +246,42 @@ export function Toasts() {
 
 const Blank = () => <div className="min-h-screen" aria-busy="true" />;
 
+function LoadFailed({ message }: { message: string }) {
+  const navigate = useNavigate();
+  return (
+    <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+      <Logo />
+      <h1 className="mt-6 text-3xl font-semibold tight">Something’s not right.</h1>
+      <p className="text-muted">{message}</p>
+      <div className="mt-2 flex gap-3">
+        <Button onClick={retryLoad}>Try again</Button>
+        <Button
+          variant="ghost"
+          onClick={async () => {
+            await signOut();
+            navigate("/");
+          }}
+        >
+          Sign out
+        </Button>
+      </div>
+    </main>
+  );
+}
+
 /** Signed-in pages. Without a profile, people are sent to setup first. */
 export function RequireSession({ needProfile = true, children }: { needProfile?: boolean; children: ReactNode }) {
   const mode = useApp((s) => s.mode);
   const profile = useApp((s) => s.profile);
+  const loadError = useApp((s) => s.loadError);
   const navigate = useNavigate();
   const blocked = !isSignedIn(mode) || (needProfile && !profile);
   useEffect(() => {
-    if (mode === "loading") return;
+    if (mode === "loading" || loadError) return;
     if (!isSignedIn(mode)) navigate("/login", { replace: true });
     else if (needProfile && !profile) navigate("/setup/details", { replace: true });
-  }, [mode, profile, needProfile, navigate]);
+  }, [mode, profile, needProfile, navigate, loadError]);
+  if (loadError) return <LoadFailed message={loadError} />;
   return blocked ? <Blank /> : <>{children}</>;
 }
 

@@ -45,7 +45,7 @@ import {
 } from "./normalize";
 import { idToken } from "./session";
 
-export type AiMode = "live" | "basic" | "demo";
+export type AiMode = "live" | "basic";
 
 /** Whether this deployment has AI configured. Asked once per page load. */
 export const useAiStatus = create<{ available: boolean | null }>()(() => ({ available: null }));
@@ -64,14 +64,11 @@ export function checkAi(): Promise<boolean> {
 }
 
 export function aiMode(): AiMode {
-  if (useApp.getState().mode === "demo") return "demo";
   return useAiStatus.getState().available ? "live" : "basic";
 }
 
 export function useAiMode(): AiMode | null {
-  const mode = useApp((s) => s.mode);
   const available = useAiStatus((s) => s.available);
-  if (mode === "demo") return "demo";
   if (available === null) return null;
   return available ? "live" : "basic";
 }

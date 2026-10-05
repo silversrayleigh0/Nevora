@@ -9,8 +9,7 @@ serves one of those goals and fits the minimal design.
 
 | Area | Feature | Why it stays |
 | --- | --- | --- |
-| Account | Email/password and Google sign-in (Firebase Auth), password reset | One profile per person, synced across devices |
-| Account | Demo account ("Explore the demo") | Lets judges and new users see the full flow without signing up. Kept in the browser only |
+| Account | Email/password and Google sign-in (Firebase Auth), password reset. These are the only ways in | One profile per person, synced across devices |
 | Onboarding | 3-step setup: details → upload resume (PDF, DOCX or pasted text) → review | "Understand the candidate profile" with minimal typing |
 | Onboarding | "Build from scratch" path | Students without a resume can still start |
 | Profile | One editable profile: basics, education, projects, experience, skills, certifications, achievements, links | The single source of truth every resume is built from |
@@ -46,6 +45,7 @@ serves one of those goals and fits the minimal design.
 | Quality badges, hardcoded ATS / template / QA scores | **Cut.** Only measured numbers are shown (match score and verified-line count) |
 | User testing metrics modal | **Cut.** Landing-page survey figures stay hidden until real results are filled in (`src/pages/Landing.tsx`) |
 | Profile photo | **Cut.** Photos are discouraged on ATS resumes and invite bias |
+| Demo account | **Cut.** Email/password and Google are the only ways in |
 | Server fallback with canned resume content | **Removed.** Fallbacks only reorder and reuse the student's own words |
 
 ## Fixed from the previous review
