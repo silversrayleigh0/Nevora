@@ -30,6 +30,9 @@ const AUTH_ERRORS: Record<string, string> = {
   "auth/invalid-email": "Enter a valid email address.",
   "auth/too-many-requests": "Too many attempts. Wait a minute, then try again.",
   "auth/network-request-failed": "Couldn't reach the server. Check your connection.",
+  "auth/configuration-not-found": "Sign-in isn't switched on for this app yet. Try the demo for now.",
+  "auth/operation-not-allowed": "This sign-in method isn't switched on yet. Try another one.",
+  "auth/unauthorized-domain": "Sign-in isn't allowed from this web address yet.",
   "auth/popup-closed-by-user": "",
   "auth/cancelled-popup-request": "",
 };

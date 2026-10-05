@@ -29,35 +29,34 @@ Browser (React)                                   Vercel function /api/ai
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in the values below
+cp .env.example .env.local   # add OPENROUTER_API_KEY for Live AI
 npm run dev                  # http://localhost:5173 (the /api/ai endpoint runs in the dev server)
 ```
 
-Without any keys the demo account and basic mode still work.
+Sign-in works out of the box against the `nevora-f6289` Firebase project. Without an OpenRouter key the app runs in basic mode.
 
 ## Configuration
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Browser | Firebase web app config (public identifiers) |
+| `VITE_FIREBASE_*` | Browser | Optional. Overrides the Firebase web config in `shared/firebaseConfig.ts` (project `nevora-f6289`) |
 | `OPENROUTER_API_KEY` | Server only | AI calls. Set a credit limit on the key |
 | `OPENROUTER_MODEL`, `OPENROUTER_MODEL_QUICK`, `OPENROUTER_FALLBACK_MODELS` | Server | Optional model overrides |
-| `FIREBASE_PROJECT_ID` | Server | Token verification (defaults to the `VITE_` value) |
+| `FIREBASE_PROJECT_ID` | Server | Token verification (defaults to `nevora-f6289`) |
 | `APP_URL`, `AI_REQUESTS_PER_HOUR` | Server | Attribution and per-user limit |
 
 ### Firebase setup
 
-1. Create a project at <https://console.firebase.google.com> and add a **Web app**; copy its config
-   into the `VITE_FIREBASE_*` variables.
+1. The web config for project `nevora-f6289` is in `shared/firebaseConfig.ts` (public identifiers).
 2. **Authentication → Sign-in method:** enable *Email/Password* and *Google*. Under
    *Settings → Authorized domains* add your production domain.
 3. **Firestore Database:** create it in production mode, then deploy the rules:
-   `npx firebase-tools deploy --only firestore:rules --project <project-id>`.
+   `npx firebase-tools deploy --only firestore:rules --project nevora-f6289`.
 
 ### Deploy to Vercel
 
 1. Import the repository in Vercel (framework preset: Vite).
-2. Add all variables from `.env.example` under *Project → Settings → Environment Variables*.
+2. Add `OPENROUTER_API_KEY` (and any optional variables from `.env.example`) under *Project → Settings → Environment Variables*.
 3. Deploy. `vercel.json` routes the SPA and gives `/api/ai` up to 60 seconds.
 
 ## Scripts

@@ -1,3 +1,4 @@
+import { FIREBASE_WEB_CONFIG } from "../../shared/firebaseConfig.js";
 import type { AiTask } from "../../shared/types.js";
 import { HttpError, verifyFirebaseToken } from "./auth.js";
 import { chatJson, type ChatContent } from "./openrouter.js";
@@ -29,7 +30,7 @@ const isTask = (t: unknown): t is AiTask => typeof t === "string" && Object.hasO
 
 export async function handleAi(req: AiRequest, env: Env, fetchImpl?: typeof fetch): Promise<AiResponse> {
   const apiKey = env.OPENROUTER_API_KEY?.trim();
-  const projectId = (env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || "").trim();
+  const projectId = (env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || FIREBASE_WEB_CONFIG.projectId).trim();
 
   // The app asks this once to decide between "Live AI" and basic mode.
   if (req.method === "GET") return { status: 200, body: { ai: Boolean(apiKey && projectId) } };

@@ -23,7 +23,7 @@ describe("AI endpoint", () => {
 
   it("reports whether AI is configured", async () => {
     expect((await handleAi({ method: "GET", body: null }, env)).body).toEqual({ ai: true });
-    expect((await handleAi({ method: "GET", body: null }, {})).body).toEqual({ ai: false });
+    expect((await handleAi({ method: "GET", body: null }, {})).body).toEqual({ ai: false }); // no OpenRouter key
   });
 
   it("refuses when not configured", async () => {
