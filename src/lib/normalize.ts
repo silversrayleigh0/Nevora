@@ -1,0 +1,273 @@
+// AI output is untrusted: coerce every response into the exact shape the UI expects.
+import type {
+  BulletCoaching,
+  CertificateDetails,
+  Gap,
+  Insights,
+  InterviewQuestion,
+  JDAnalysis,
+  Profile,
+  Requirement,
+  SectionKey,
+  SkillCategory,
+  TailoredResume,
+  Verification,
+} from "../../shared/types";
+
+type Obj = Record<string, unknown>;
+const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const str = (v: unknown): string => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
+const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
+const num = (v: unknown, lo = 0, hi = 100): number => {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : lo;
+};
+const oneOf = <T extends string>(v: unknown, options: readonly T[], fallback: T): T =>
+  options.includes(v as T) ? (v as T) : fallback;
+const strings = (v: unknown) => arr(v).map(str).map((s) => s.trim()).filter(Boolean);
+
+export const emptyProfile = (name = "", email = ""): Profile => ({
+  basics: { name, email, phone: "", location: "", links: [] },
+  summary: "",
+  education: [],
+  experience: [],
+  projects: [],
+  skills: [],
+  certifications: [],
+  achievements: [],
+});
+
+const SKILL_CATEGORIES: SkillCategory[] = ["language", "framework", "tool", "concept", "soft"];
+
+/** Normalizes a parsed or stored profile and guarantees unique, stable IDs. */
+export function normalizeProfile(input: unknown): Profile {
+  const p = obj(input);
+  const basics = obj(p.basics);
+  const used = new Set<string>();
+  const uid = (raw: unknown, fallback: string) => {
+    let id = str(raw).trim() || fallback;
+    while (used.has(id)) id = `${id}x`;
+    used.add(id);
+    return id;
+  };
+  const bullets = (v: unknown, prefix: string) =>
+    arr(v)
+      .map((b, i) => ({ id: uid(obj(b).id, `${prefix}_b${i + 1}`), text: str(typeof b === "string" ? b : obj(b).text).trim() }))
+      .filter((b) => b.text);
+  return {
+    basics: {
+      name: str(basics.name),
+      email: str(basics.email),
+      phone: str(basics.phone),
+      location: str(basics.location),
+      links: strings(basics.links),
+    },
+    summary: str(p.summary),
+    education: arr(p.education).map((e, i) => {
+      const o = obj(e);
+      return {
+        id: uid(o.id, `edu_${i + 1}`),
+        institution: str(o.institution),
+        degree: str(o.degree),
+        field: str(o.field),
+        start: str(o.start),
+        end: str(o.end),
+        score: str(o.score),
+      };
+    }),
+    experience: arr(p.experience).map((e, i) => {
+      const o = obj(e);
+      const id = uid(o.id, `exp_${i + 1}`);
+      return { id, role: str(o.role), org: str(o.org), start: str(o.start), end: str(o.end), bullets: bullets(o.bullets, id) };
+    }),
+    projects: arr(p.projects).map((e, i) => {
+      const o = obj(e);
+      const id = uid(o.id, `proj_${i + 1}`);
+      return { id, name: str(o.name), tech: strings(o.tech), link: str(o.link), bullets: bullets(o.bullets, id) };
+    }),
+    skills: arr(p.skills)
+      .map((s, i) => {
+        const o = obj(s);
+        return { id: uid(o.id, `skill_${i + 1}`), name: str(typeof s === "string" ? s : o.name).trim(), category: oneOf(o.category, SKILL_CATEGORIES, "tool") };
+      })
+      .filter((s) => s.name),
+    certifications: arr(p.certifications)
+      .map((c, i) => {
+        const o = obj(c);
+        return { id: uid(o.id, `cert_${i + 1}`), name: str(o.name), issuer: str(o.issuer), date: str(o.date), credential: str(o.credential) };
+      })
+      .filter((c) => c.name),
+    achievements: bullets(p.achievements, "ach").map((a, i) => ({ ...a, id: a.id.startsWith("ach") ? a.id : `ach_${i + 1}` })),
+  };
+}
+
+export function normalizeInsights(v: unknown): Insights {
+  const o = obj(v);
+  return {
+    strengths: arr(o.strengths)
+      .map((s) => ({ area: str(obj(s).area), level: oneOf(obj(s).level, ["Strong", "Growing", "Beginner"] as const, "Growing"), score: num(obj(s).score) }))
+      .filter((s) => s.area)
+      .slice(0, 4),
+    roles: arr(o.roles)
+      .map((r) => ({ title: str(obj(r).title), fit: num(obj(r).fit) }))
+      .filter((r) => r.title)
+      .slice(0, 3),
+  };
+}
+
+const jdSkills = (v: unknown) =>
+  arr(v)
+    .map((s) => {
+      const skill = str(typeof s === "string" ? s : obj(s).skill).trim();
+      return { skill, normalized: (str(obj(s).normalized) || skill).toLowerCase() };
+    })
+    .filter((s) => s.skill);
+
+export function normalizeJD(v: unknown): JDAnalysis {
+  const o = obj(v);
+  const mustHave = jdSkills(o.mustHave);
+  return {
+    title: str(o.title).trim() || "Untitled role",
+    company: str(o.company).trim() || undefined,
+    location: str(o.location).trim() || undefined,
+    seniority: oneOf(o.seniority, ["intern", "fresher", "junior", "mid", "senior"] as const, "fresher"),
+    mustHave,
+    niceToHave: jdSkills(o.niceToHave).filter((n) => !mustHave.some((m) => m.normalized === n.normalized)),
+    responsibilities: strings(o.responsibilities).slice(0, 5),
+    softSkills: strings(o.softSkills),
+    keywords: strings(o.keywords).slice(0, 15),
+    education: str(o.education).trim() || undefined,
+  };
+}
+
+/** Keeps only evidence IDs that really exist in the profile. */
+export function normalizeRequirements(v: unknown, profile: Profile): Requirement[] {
+  const ids = new Set<string>([
+    ...profile.projects.flatMap((p) => [p.id, ...p.bullets.map((b) => b.id)]),
+    ...profile.experience.flatMap((e) => [e.id, ...e.bullets.map((b) => b.id)]),
+    ...profile.skills.map((s) => s.id),
+    ...profile.education.map((e) => e.id),
+    ...profile.certifications.map((c) => c.id),
+    ...profile.achievements.map((a) => a.id),
+  ]);
+  const seen = new Set<string>();
+  return arr(obj(v).requirements)
+    .map((r): Requirement => {
+      const o = obj(r);
+      const evidenceIds = strings(o.evidenceIds).filter((id) => ids.has(id));
+      let status = oneOf(o.status, ["strong", "partial", "missing"] as const, "missing");
+      if (status !== "missing" && !evidenceIds.length) status = "missing";
+      return {
+        requirement: str(o.requirement).trim(),
+        type: oneOf(o.type, ["must", "nice", "soft", "education"] as const, "must"),
+        status,
+        evidenceIds,
+        note: str(o.note) || (status === "missing" ? "Not found in your profile" : ""),
+      };
+    })
+    .filter((r) => r.requirement && !seen.has(r.requirement.toLowerCase()) && seen.add(r.requirement.toLowerCase()));
+}
+
+const SECTION_KEYS: SectionKey[] = ["projects", "experience", "education", "certifications", "achievements"];
+
+export function normalizeResume(v: unknown): TailoredResume {
+  const o = obj(v);
+  const bulletIds = new Set<string>();
+  let n = 0;
+  return {
+    summary: str(o.summary),
+    skills: arr(o.skills)
+      .map((g) => ({ category: str(obj(g).category), items: strings(obj(g).items) }))
+      .filter((g) => g.category && g.items.length),
+    sections: arr(o.sections)
+      .map((s) => ({
+        key: oneOf(obj(s).key, SECTION_KEYS, "projects"),
+        items: arr(obj(s).items).map((it) => {
+          const i = obj(it);
+          return {
+            refId: str(i.refId),
+            heading: str(i.heading),
+            subheading: str(i.subheading) || undefined,
+            meta: str(i.meta) || undefined,
+            bullets: arr(i.bullets)
+              .map((b) => {
+                const x = obj(b);
+                let id = str(x.id) || `t${++n}`;
+                while (bulletIds.has(id)) id = `t${++n}`;
+                bulletIds.add(id);
+                return {
+                  id,
+                  text: str(x.text).trim(),
+                  sourceIds: strings(x.sourceIds),
+                  originalText: str(x.originalText),
+                  changeReason: str(x.changeReason),
+                  needsMetric: Boolean(x.needsMetric) || /\[add metric\]/i.test(str(x.text)),
+                };
+              })
+              .filter((b) => b.text),
+          };
+        }),
+      }))
+      .filter((s) => s.items.length),
+    omittedIds: strings(o.omittedIds),
+    orderNotes: arr(o.orderNotes)
+      .map((x) => ({ change: str(obj(x).change), reason: str(obj(x).reason) }))
+      .filter((x) => x.change)
+      .slice(0, 3),
+  };
+}
+
+export function normalizeVerifications(v: unknown): Verification[] {
+  return arr(obj(v).results).map((r) => ({
+    bulletId: str(obj(r).bulletId),
+    supported: obj(r).supported === true,
+    issue: str(obj(r).issue) || undefined,
+  }));
+}
+
+export function normalizePlan(v: unknown): Gap[] {
+  return arr(obj(v).gaps)
+    .map((g) => {
+      const o = obj(g);
+      return {
+        skill: str(o.skill),
+        priority: oneOf(o.priority, ["high", "medium", "low"] as const, "medium"),
+        why: str(o.why),
+        steps: strings(o.steps).slice(0, 6),
+        resources: arr(o.resources)
+          .map((r) => ({ title: str(typeof r === "string" ? r : obj(r).title), type: oneOf(obj(r).type, ["docs", "course", "video"] as const, "docs") }))
+          .filter((r) => r.title)
+          .slice(0, 3),
+        miniProject: str(o.miniProject),
+        timeEstimate: str(o.timeEstimate) || "About 1 week",
+      };
+    })
+    .filter((g) => g.skill && g.steps.length)
+    .slice(0, 4);
+}
+
+export function normalizeInterview(v: unknown): InterviewQuestion[] {
+  return arr(obj(v).questions)
+    .map((q) => {
+      const o = obj(q);
+      const s = obj(o.story);
+      return {
+        question: str(o.question),
+        why: str(o.why),
+        sourceIds: strings(o.sourceIds),
+        story: { situation: str(s.situation), task: str(s.task), action: str(s.action), result: str(s.result) },
+      };
+    })
+    .filter((q) => q.question)
+    .slice(0, 5);
+}
+
+export function normalizeCoaching(v: unknown): BulletCoaching {
+  const o = obj(v);
+  return { score: num(o.score, 1, 5), missing: strings(o.missing), improved: str(o.improved), tip: str(o.tip) };
+}
+
+export function normalizeCertificate(v: unknown): CertificateDetails {
+  const o = obj(v);
+  return { name: str(o.name), issuer: str(o.issuer), date: str(o.date), credential: str(o.credential) };
+}
