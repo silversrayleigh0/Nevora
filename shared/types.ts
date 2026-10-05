@@ -16,10 +16,10 @@ export type Profile = {
     end: string;
     score: string;
   }[];
-  experience: { id: string; role: string; org: string; start: string; end: string; bullets: Bullet[] }[];
+  experience: { id: string; role: string; org: string; start: string; end: string; bullets: Bullet[]; proof?: Proof }[];
   projects: { id: string; name: string; tech: string[]; link: string; bullets: Bullet[] }[];
   skills: { id: string; name: string; category: SkillCategory }[];
-  certifications: { id: string; name: string; issuer: string; date: string; credential: string }[];
+  certifications: { id: string; name: string; issuer: string; date: string; credential: string; proof?: Proof }[];
   achievements: Bullet[];
 };
 
@@ -124,6 +124,26 @@ export type BulletCoaching = { score: number; missing: string[]; improved: strin
 
 export type CertificateDetails = { name: string; issuer: string; date: string; credential: string };
 
+/** Result of checking an uploaded certificate or experience proof against the profile. */
+export type ProofCheck = {
+  verdict: "verified" | "mismatch" | "unreadable" | "not_a_document";
+  documentType: string;
+  holderName: string;
+  issuer: string;
+  title: string;
+  role: string;
+  date: string;
+  startDate: string;
+  endDate: string;
+  nameMatches: boolean;
+  detailsMatch: boolean;
+  concerns: string[];
+  reason: string;
+};
+
+/** What the profile keeps about a check (the image itself is never stored). */
+export type Proof = { status: "verified" | "rejected"; reason: string; fileName: string; checkedAt: number; documentType: string };
+
 export type ToggleSection = "summary" | "skills" | SectionKey;
 
 export type Application = {
@@ -146,7 +166,7 @@ export type Application = {
 /** Tasks the AI endpoint accepts. Prompts live on the server only. */
 export type AiTask =
   | "parseResume"
-  | "parseCertificate"
+  | "verifyDocument"
   | "insights"
   | "analyzeJD"
   | "match"

@@ -56,3 +56,63 @@ export function fileToDataUrl(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
+
+const MAX_SIDE = 1800;
+
+function canvasToJpeg(canvas: HTMLCanvasElement): string {
+  return canvas.toDataURL("image/jpeg", 0.88);
+}
+
+/** Loads an image file and scales it down so uploads stay small and fast. */
+async function imageToDataUrl(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("That image couldn't be opened. Try a PNG or JPG."));
+      el.src = url;
+    });
+    const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvasToJpeg(canvas);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Renders the first page of a PDF to an image. */
+async function pdfToDataUrl(file: File): Promise<string> {
+  const [pdfjs, worker] = await Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+  try {
+    const page = await (await task.promise).getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: Math.min(2.5, MAX_SIDE / Math.max(base.width, base.height)) });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    await page.render({ canvas, canvasContext: canvas.getContext("2d")!, viewport }).promise;
+    return canvasToJpeg(canvas);
+  } finally {
+    await task.destroy();
+  }
+}
+
+export const PROOF_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf,.pdf";
+export const MAX_PROOF_BYTES = 10 * 1024 * 1024;
+
+/** Turns an uploaded proof (photo, scan or PDF) into one JPEG image for checking. */
+export async function proofImage(file: File): Promise<string> {
+  if (file.size > MAX_PROOF_BYTES) throw new Error("That file is over 10 MB. Try a smaller one.");
+  if (isPdf(file)) return pdfToDataUrl(file);
+  if (/^image\/(png|jpe?g|webp|gif)$/.test(file.type)) return imageToDataUrl(file);
+  throw new Error("Upload a photo, scan or PDF of the document.");
+}

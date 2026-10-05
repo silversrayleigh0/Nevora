@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import type { Account, CareerStatus } from "../../shared/types";
 import { RequireSession, SetupHeader } from "../components/layout";
+import { YearField } from "../components/form";
 import { Button, TextField } from "../components/ui";
 import { useApp } from "../store/app";
 
@@ -67,13 +68,7 @@ function Details() {
         })}
       </div>
       <div className="mt-8 grid gap-4 sm:grid-cols-[200px_1fr]">
-        <TextField
-          label="Graduation year"
-          inputMode="numeric"
-          value={form.gradYear}
-          onChange={(e) => patch({ gradYear: e.target.value })}
-          optional={form.status !== "student"}
-        />
+        <YearField label="Graduation year" value={form.gradYear} onChange={(v) => patch({ gradYear: v })} optional={form.status !== "student"} />
         <div className="flex flex-col gap-2">
           <span className="text-sm font-medium">
             Roles you’re interested in <span className="font-normal text-muted">(optional)</span>

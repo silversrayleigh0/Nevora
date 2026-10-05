@@ -4,7 +4,6 @@ import { create } from "zustand";
 import type {
   AiTask,
   BulletCoaching,
-  CertificateDetails,
   CoverLetter,
   Gap,
   Insights,
@@ -12,6 +11,7 @@ import type {
   JDAnalysis,
   Match,
   Profile,
+  ProofCheck,
   Requirement,
   TailoredResume,
   Verification,
@@ -30,38 +30,56 @@ import {
   scoreMatch,
   sourceText,
 } from "./engine";
-import { fileToDataUrl, isPdf, MAX_UPLOAD_BYTES, pdfText, resumeText } from "./extract";
+import { MAX_UPLOAD_BYTES, proofImage, resumeText } from "./extract";
 import {
-  normalizeCertificate,
   normalizeCoaching,
   normalizeInsights,
   normalizeInterview,
   normalizeJD,
   normalizePlan,
   normalizeProfile,
+  normalizeProofCheck,
   normalizeRequirements,
   normalizeResume,
   normalizeVerifications,
 } from "./normalize";
+import { parsedEnough, parseResumeText } from "./resumeParser";
 import { idToken } from "./session";
 
 export type AiMode = "live" | "basic";
 
-/** Whether this deployment has AI configured. Asked once per page load. */
-export const useAiStatus = create<{ available: boolean | null }>()(() => ({ available: null }));
+/**
+ * Whether this deployment has AI configured. Asked once per page load.
+ * `reason` explains why AI is off, so errors can say something useful.
+ */
+export const useAiStatus = create<{ available: boolean | null; reason: "" | "not_configured" | "unreachable" | "failing" }>()(() => ({
+  available: null,
+  reason: "",
+}));
 
 let statusRequest: Promise<boolean> | null = null;
 export function checkAi(): Promise<boolean> {
   statusRequest ??= fetch("/api/ai", { headers: { Accept: "application/json" } })
-    .then((r) => (r.ok ? r.json() : { ai: false }))
-    .then((b: { ai?: boolean }) => Boolean(b.ai))
-    .catch(() => false)
-    .then((ai) => {
-      useAiStatus.setState({ available: ai });
+    .then(async (r) => {
+      if (!r.ok) return { ai: false, reason: "unreachable" as const };
+      const body = (await r.json()) as { ai?: boolean };
+      return { ai: Boolean(body.ai), reason: body.ai ? ("" as const) : ("not_configured" as const) };
+    })
+    .catch(() => ({ ai: false, reason: "unreachable" as const }))
+    .then(({ ai, reason }) => {
+      useAiStatus.setState({ available: ai, reason });
+      if (!ai) console.warn(`[ai] Live AI is off (${reason}). Check ANTHROPIC_API_KEY / OPENROUTER_API_KEY on the server.`);
       return ai;
     });
   return statusRequest;
 }
+
+const AI_OFF: Record<string, string> = {
+  not_configured: "Live AI isn’t set up on the server yet",
+  unreachable: "Nevora’s AI service didn’t respond",
+  failing: "Live AI isn’t working right now",
+};
+export const aiOffMessage = () => AI_OFF[useAiStatus.getState().reason] ?? "Live AI isn’t available right now";
 
 export function aiMode(): AiMode {
   return useAiStatus.getState().available ? "live" : "basic";
@@ -92,7 +110,7 @@ async function ask(task: AiTask, input: unknown, image?: string): Promise<unknow
   const body = (await res.json().catch(() => ({}))) as { data?: unknown; error?: { code?: string; message?: string } };
   if (res.ok) return body.data ?? null;
   if (body.error?.code === "ai_unavailable") {
-    useAiStatus.setState({ available: false });
+    useAiStatus.setState({ available: false, reason: "failing" });
     return null;
   }
   throw new Error(body.error?.message || "Something went wrong. Try again.");
@@ -123,27 +141,40 @@ export function parseResume(file: File | null, text: string): Promise<Profile> {
       if (source.trim().length < 40) throw new Error("We couldn't read text from this file. It may be a scanned image — paste the text instead.");
     }
     if (!source.trim()) throw new Error("Add a PDF or paste your resume text.");
-    const data = await ask("parseResume", source.slice(0, 20_000));
-    if (!data) throw new Error("Reading a resume needs Live AI, which isn't available right now. Choose “Build from scratch” to fill in your profile yourself.");
-    return normalizeProfile(data);
+    let aiError: Error | null = null;
+    try {
+      const data = await ask("parseResume", source.slice(0, 20_000));
+      if (data) {
+        const parsed = normalizeProfile(data);
+        if (parsedEnough(parsed)) return parsed;
+      }
+    } catch (err) {
+      aiError = err as Error;
+    }
+    // Without AI (or if it failed), read the text directly. Nothing is invented either way.
+    const local = parseResumeText(source);
+    if (parsedEnough(local)) return local;
+    throw aiError ?? new Error("We couldn't find sections in that text. Add headings like Education, Skills and Projects, or choose “Build from scratch”.");
   });
 }
 
-export async function parseCertificate(file: File): Promise<CertificateDetails> {
-  if (file.size > 3 * 1024 * 1024) throw new Error("That file is over 3 MB. Try a smaller one.");
-  let data: unknown | null;
-  if (isPdf(file)) {
-    const text = await pdfText(file, 2).catch(() => "");
-    if (!text.trim()) throw new Error("We couldn't read that PDF. Type the details instead.");
-    data = await ask("parseCertificate", text);
-  } else if (/^image\/(png|jpe?g|webp|gif)$/.test(file.type)) {
-    data = await ask("parseCertificate", "", await fileToDataUrl(file));
-  } else {
-    throw new Error("Choose a PDF or an image of the certificate.");
-  }
-  if (!data) throw new Error("Reading certificates needs Live AI. Type the details instead.");
-  return normalizeCertificate(data);
+export type ProofKind = "certificate" | "experience";
+
+/** Checks an uploaded certificate or work document against what the profile claims. */
+export async function verifyDocument(
+  file: File,
+  kind: ProofKind,
+  expected: { name: string; org?: string; role?: string; start?: string; end?: string },
+): Promise<ProofCheck> {
+  const image = await proofImage(file);
+  if (useApp.getState().mode !== "cloud" || !(await checkAi())) throw new Error(`${aiOffMessage()}, so documents can’t be checked yet. Try again later.`);
+  const data = await ask("verifyDocument", { kind, expected }, image);
+  if (!data) throw new Error(`${aiOffMessage()}, so documents can’t be checked yet. Try again later.`);
+  return normalizeProofCheck(data, kind);
 }
+
+/** Only verified certificates appear on tailored resumes. */
+export const resumeProfile = (p: Profile): Profile => ({ ...p, certifications: p.certifications.filter((c) => c.proof?.status === "verified") });
 
 export function insights(profile: Profile, interests: string[] | undefined): Promise<Insights | null> {
   return withPace(async () => {
@@ -162,6 +193,7 @@ export function analyzeJD(text: string): Promise<JDAnalysis> {
 
 export function match(profile: Profile, jd: JDAnalysis): Promise<Match> {
   return withPace(async () => {
+    profile = resumeProfile(profile);
     const data = await ask("match", { profile, jd });
     const requirements: Requirement[] | null = data ? normalizeRequirements(data, profile) : null;
     return scoreMatch(requirements?.length ? requirements : localMatch(profile, jd));
@@ -170,6 +202,7 @@ export function match(profile: Profile, jd: JDAnalysis): Promise<Match> {
 
 export function tailor(profile: Profile, jd: JDAnalysis, m: Match | null): Promise<TailoredResume> {
   return withPace(async () => {
+    profile = resumeProfile(profile);
     const data = await ask("tailor", { profile, jd, match: m });
     const resume = data ? normalizeResume(data) : null;
     return resume?.sections.length ? resume : localTailor(profile, jd);
@@ -199,6 +232,7 @@ export function learningPlan(profile: Profile, jd: JDAnalysis, gaps: Requirement
 
 export function coverLetter(profile: Profile, jd: JDAnalysis, tone: CoverLetter["tone"]): Promise<CoverLetter> {
   return withPace(async () => {
+    profile = resumeProfile(profile);
     const data = (await ask("coverLetter", { tone, profile, jd })) as { text?: unknown } | null;
     return typeof data?.text === "string" && data.text.trim() ? { tone, text: data.text.trim() } : localCoverLetter(profile, jd, tone);
   });

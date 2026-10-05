@@ -14,7 +14,9 @@ serves one of those goals and fits the minimal design.
 | Onboarding | "Build from scratch" path | Students without a resume can still start |
 | Profile | One editable profile: basics, education, projects, experience, skills, certifications, achievements, links | The single source of truth every resume is built from |
 | Profile | Section status (done / needs attention) and the impact hint on bullets without numbers | Pushes students to add real evidence instead of the AI making it up |
-| Profile | Certificate upload that fills the form (PDF or image) | Saves typing; the student confirms before saving |
+| Profile | Dropdowns for degree, branch, years and dates (with "Other…"), and a searchable skill picker that sorts skills into categories | Faster, consistent entries |
+| Profile | **Certificates by image only**: upload a photo/scan/PDF; the AI reads it and checks it's issued to the student. Only verified certificates appear on resumes | No typed-in credentials to fake |
+| Profile | **Proof for experience**: upload an offer/internship/experience letter; the AI checks name, organisation, role and dates | Recruiter trust; clearing a field after verification resets the check |
 | Job | Paste a JD → required, nice-to-have, soft skills, responsibilities (editable) | "Understand the job description" |
 | Match | Weighted match score with breakdown and per-requirement evidence (Strong / Partial / Missing) | "Determine relevance", shown as proof, not a black-box number |
 | Match | Score forecast ("your potential") | Shows the payoff of closing gaps |
@@ -28,7 +30,8 @@ serves one of those goals and fits the minimal design.
 | Grow | Interview prep (5 questions with STAR answers from real projects) | Uses the same verified evidence |
 | Grow | Bullet coach (XYZ formula) | Teaches better writing |
 | Home | Profile strength, next best step, strengths and roles you already fit, saved resumes (open, rename, duplicate, delete with undo) | One place to come back to |
-| Platform | Basic mode: if AI is down or not configured, everything still works using deterministic logic (never canned content) | Reliability, and no fabricated fallback |
+| Platform | Claude as the primary AI, OpenRouter as automatic fallback | Quality first, still answers if one provider fails |
+| Platform | Basic mode: if AI is down or not configured, everything still works using deterministic logic, including a local resume reader (never canned content) | Reliability, and no fabricated fallback |
 
 ## Cut (and why)
 

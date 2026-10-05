@@ -1,11 +1,14 @@
 import { FIREBASE_WEB_CONFIG } from "../../shared/firebaseConfig.js";
 import type { AiTask } from "../../shared/types.js";
 import { HttpError, verifyFirebaseToken } from "./auth.js";
+import { claudeJson } from "./claude.js";
 import { chatJson, type ChatContent } from "./openrouter.js";
-import { MAX_TOKENS, PROMPTS, QUICK_TASKS, TEMPERATURE } from "./prompts.js";
+import { IMAGE_TASKS, MAX_TOKENS, PROMPTS, QUICK_TASKS, TEMPERATURE } from "./prompts.js";
 import { takeToken } from "./rateLimit.js";
 
 export type Env = {
+  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_MODEL?: string;
   OPENROUTER_API_KEY?: string;
   OPENROUTER_MODEL?: string;
   OPENROUTER_MODEL_QUICK?: string;
@@ -19,25 +22,35 @@ export type Env = {
 export type AiRequest = { method: string; authorization?: string; body: unknown };
 export type AiResponse = { status: number; body: unknown };
 
+export type Providers = {
+  claude?: (opts: Parameters<typeof claudeJson>[0]) => Promise<unknown>;
+  fetchImpl?: typeof fetch;
+};
+
 const MAX_INPUT_CHARS = 60_000;
-const MAX_IMAGE_CHARS = 4_000_000;
+const MAX_IMAGE_CHARS = 6_000_000;
 const IMAGE_DATA_URL = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 
+export const DEFAULT_CLAUDE_MODEL = "claude-opus-5-5";
 export const DEFAULT_MODEL = "anthropic/claude-sonnet-4.5";
 export const DEFAULT_QUICK_MODEL = "anthropic/claude-haiku-4.5";
 
 const isTask = (t: unknown): t is AiTask => typeof t === "string" && Object.hasOwn(PROMPTS, t);
 
-export async function handleAi(req: AiRequest, env: Env, fetchImpl?: typeof fetch): Promise<AiResponse> {
-  const apiKey = env.OPENROUTER_API_KEY?.trim();
+/** Claude handles the hard reasoning tasks with more effort; extraction stays fast. */
+const EFFORT: Partial<Record<AiTask, "low" | "medium" | "high">> = { tailor: "medium", match: "medium", verify: "medium", verifyDocument: "medium" };
+
+export async function handleAi(req: AiRequest, env: Env, providers: Providers = {}): Promise<AiResponse> {
+  const claudeKey = env.ANTHROPIC_API_KEY?.trim();
+  const openrouterKey = env.OPENROUTER_API_KEY?.trim();
   const projectId = (env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || FIREBASE_WEB_CONFIG.projectId).trim();
 
   // The app asks this once to decide between "Live AI" and basic mode.
-  if (req.method === "GET") return { status: 200, body: { ai: Boolean(apiKey && projectId) } };
+  if (req.method === "GET") return { status: 200, body: { ai: Boolean(claudeKey || openrouterKey), claude: Boolean(claudeKey), openrouter: Boolean(openrouterKey) } };
   if (req.method !== "POST") return { status: 405, body: { error: { code: "method_not_allowed", message: "Use POST." } } };
 
   try {
-    if (!apiKey || !projectId) throw new HttpError(503, "ai_unavailable", "AI isn't configured on this server.");
+    if (!claudeKey && !openrouterKey) throw new HttpError(503, "ai_unavailable", "AI isn't configured on this server.");
     const uid = await verifyFirebaseToken(req.authorization, projectId);
 
     const { task, input, image } = (req.body ?? {}) as { task?: unknown; input?: unknown; image?: unknown };
@@ -47,12 +60,12 @@ export async function handleAi(req: AiRequest, env: Env, fetchImpl?: typeof fetc
     if (serialized.length > MAX_INPUT_CHARS) throw new HttpError(413, "prompt_too_large", "That's too much text at once. Try a shorter version.");
 
     let user: ChatContent = `INPUT:\n${serialized}`;
-    if (image !== undefined) {
-      if (task !== "parseCertificate" || typeof image !== "string" || image.length > MAX_IMAGE_CHARS || !IMAGE_DATA_URL.test(image)) {
+    if (image !== undefined || IMAGE_TASKS.has(task)) {
+      if (!IMAGE_TASKS.has(task) || typeof image !== "string" || image.length > MAX_IMAGE_CHARS || !IMAGE_DATA_URL.test(image)) {
         throw new HttpError(400, "image_rejected", "That file couldn't be read. Try a different image.");
       }
       user = [
-        { type: "text", text: "The certificate is attached as an image." },
+        { type: "text", text: `The document image is attached.\n\nINPUT:\n${serialized}` },
         { type: "image_url", image_url: { url: image } },
       ];
     }
@@ -60,23 +73,53 @@ export async function handleAi(req: AiRequest, env: Env, fetchImpl?: typeof fetc
     const perHour = Number(env.AI_REQUESTS_PER_HOUR) || 80;
     if (!takeToken(uid, perHour)) throw new HttpError(429, "rate_limited", "You've made a lot of requests. Wait a few minutes, then try again.");
 
-    const primary = QUICK_TASKS.has(task) ? env.OPENROUTER_MODEL_QUICK || DEFAULT_QUICK_MODEL : env.OPENROUTER_MODEL || DEFAULT_MODEL;
-    const fallbacks = (env.OPENROUTER_FALLBACK_MODELS ?? "")
-      .split(",")
-      .map((m) => m.trim())
-      .filter((m) => m && m !== primary);
+    const maxTokens = MAX_TOKENS[task] ?? 2000;
+    let lastError: HttpError | null = null;
 
-    const data = await chatJson({
-      apiKey,
-      models: [primary, ...fallbacks].slice(0, 3),
-      system: PROMPTS[task],
-      user,
-      temperature: TEMPERATURE[task] ?? 0.1,
-      maxTokens: MAX_TOKENS[task] ?? 2000,
-      appUrl: env.APP_URL,
-      fetchImpl,
-    });
-    return { status: 200, body: { data } };
+    // 1. Claude (primary)
+    if (claudeKey) {
+      try {
+        const data = await (providers.claude ?? claudeJson)({
+          apiKey: claudeKey,
+          model: env.ANTHROPIC_MODEL || DEFAULT_CLAUDE_MODEL,
+          system: PROMPTS[task],
+          user,
+          effort: QUICK_TASKS.has(task) ? "low" : (EFFORT[task] ?? "low"),
+          // Thinking is always on for this model, so leave room above the answer itself.
+          maxTokens: Math.max(16_000, maxTokens * 2),
+        });
+        return { status: 200, body: { data, provider: "claude" } };
+      } catch (err) {
+        lastError = err instanceof HttpError ? err : new HttpError(502, "upstream_error", "Claude returned an error.");
+        console.warn(`[ai] claude failed for ${task}: ${lastError.code} ${lastError.message}`);
+      }
+    }
+
+    // 2. OpenRouter (fallback)
+    if (openrouterKey) {
+      const primary = QUICK_TASKS.has(task) ? env.OPENROUTER_MODEL_QUICK || DEFAULT_QUICK_MODEL : env.OPENROUTER_MODEL || DEFAULT_MODEL;
+      const fallbacks = (env.OPENROUTER_FALLBACK_MODELS ?? "")
+        .split(",")
+        .map((m) => m.trim())
+        .filter((m) => m && m !== primary);
+      try {
+        const data = await chatJson({
+          apiKey: openrouterKey,
+          models: [primary, ...fallbacks].slice(0, 3),
+          system: PROMPTS[task],
+          user,
+          temperature: TEMPERATURE[task] ?? 0.1,
+          maxTokens,
+          appUrl: env.APP_URL,
+          fetchImpl: providers.fetchImpl,
+        });
+        return { status: 200, body: { data, provider: "openrouter" } };
+      } catch (err) {
+        lastError = err instanceof HttpError ? err : new HttpError(502, "upstream_error", "The AI service returned an error.");
+        console.warn(`[ai] openrouter failed for ${task}: ${lastError.code} ${lastError.message}`);
+      }
+    }
+    throw lastError ?? new HttpError(503, "ai_unavailable", "AI isn't configured on this server.");
   } catch (err) {
     if (err instanceof HttpError) return { status: err.status, body: { error: { code: err.code, message: err.message } } };
     console.error("[ai] unexpected error", err);

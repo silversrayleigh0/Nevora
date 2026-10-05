@@ -106,10 +106,27 @@ const defaultAccount = (user: User): Account => ({
   interests: [],
 });
 
+const LOAD_TIMEOUT_MS = 15_000;
+
+function loadErrorMessage(err: unknown): string {
+  const code = (err as { code?: string })?.code ?? "";
+  if (code === "timeout") return "Loading your profile is taking too long. Check your connection, then try again.";
+  if (code === "permission-denied") return "Your saved data couldn’t be opened. Sign out and back in, then try again.";
+  if (code === "not-found" || code === "failed-precondition") return "Nevora’s database isn’t ready yet. Please try again in a few minutes.";
+  return "We couldn’t load your profile. Check your connection, then try again.";
+}
+
 async function loadUser(user: User) {
   useApp.setState({ mode: "loading", loadError: null });
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const [snap, apps] = await Promise.all([getDoc(userDoc(user.uid)), getDocs(collection(db!, "users", user.uid, "applications"))]);
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error("load timed out"), { code: "timeout" })), LOAD_TIMEOUT_MS);
+    });
+    const [snap, apps] = await Promise.race([
+      Promise.all([getDoc(userDoc(user.uid)), getDocs(collection(db!, "users", user.uid, "applications"))]),
+      timeout,
+    ]);
     const data = snap.data() ?? {};
     const applications = apps.docs.map((d) => d.data() as Application).sort((a, b) => b.updatedAt - a.updatedAt);
     const activeId = useApp.getState().activeId;
@@ -135,8 +152,10 @@ async function loadUser(user: User) {
       insights: null,
       applications: [],
       saveState: "error",
-      loadError: "We couldn’t load your profile. Check your connection, then try again.",
+      loadError: loadErrorMessage(err),
     });
+  } finally {
+    clearTimeout(timer);
   }
 }
 

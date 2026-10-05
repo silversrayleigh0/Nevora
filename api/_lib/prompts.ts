@@ -9,7 +9,16 @@ export const PROMPTS: Record<AiTask, string> = {
 {"basics":{"name":"","email":"","phone":"","location":"","links":[]},"summary":"","education":[{"id":"edu_1","institution":"","degree":"","field":"","start":"","end":"","score":""}],"experience":[{"id":"exp_1","role":"","org":"","start":"","end":"","bullets":[{"id":"exp_1_b1","text":""}]}],"projects":[{"id":"proj_1","name":"","tech":[],"link":"","bullets":[{"id":"proj_1_b1","text":""}]}],"skills":[{"id":"skill_1","name":"","category":"language|framework|tool|concept|soft"}],"certifications":[{"id":"cert_1","name":"","issuer":"","date":"","credential":""}],"achievements":[{"id":"ach_1","text":""}]}
 Rules: copy facts verbatim; never infer, add or embellish anything; split every bullet into its own item; assign IDs in the pattern shown; use empty arrays for missing sections. ${JSON_ONLY}`,
 
-  parseCertificate: `Read this certificate and return {"name":"","issuer":"","date":"","credential":""}. Use only what is printed on it; leave a field empty if it isn't shown. ${JSON_ONLY}`,
+  verifyDocument: `You check a document image a student uploaded as proof. INPUT has "kind" ("certificate" or "experience") and "expected" (the student's name and, for experience, the organisation, role and dates they claimed).
+Read ONLY what is visibly printed in the image. Return:
+{"verdict":"verified|mismatch|unreadable|not_a_document","documentType":"","holderName":"","issuer":"","title":"","role":"","date":"","startDate":"","endDate":"","nameMatches":false,"detailsMatch":false,"concerns":[],"reason":""}
+documentType: e.g. "course certificate", "internship certificate", "offer letter", "experience letter", "relieving letter", "screenshot", "other".
+holderName: the person the document is issued to. issuer: the organisation that issued it. title: the certificate or course name. role/startDate/endDate: for work documents. date: the issue date.
+nameMatches: true if holderName is the expected name (allow initials, middle names and different order).
+detailsMatch: for "experience", true if the organisation matches and the role and dates are consistent with the claim; for "certificate", true if it is a completion/achievement certificate with a clear issuer and title.
+concerns: visible signs the image may be edited or unreliable (mismatched fonts, misaligned or pasted text, inconsistent dates, cropped names, blurry key fields). Do not speculate beyond what is visible.
+verdict: "not_a_document" if it isn't a certificate or employment document; "unreadable" if key fields can't be read; "verified" only if nameMatches and detailsMatch are true and there are no serious concerns; otherwise "mismatch".
+reason: one short, friendly sentence to the student explaining the verdict and what to do next. ${JSON_ONLY}`,
 
   insights: `Given a candidate Profile (and optional interests), return {"strengths":[{"area":"","level":"Strong|Growing|Beginner","score":0}],"roles":[{"title":"","fit":0}]}.
 strengths: 3-4 broad skill areas (e.g. Frontend, Backend, Data, Design) judged ONLY from evidence in projects and experience; score 0-100.
@@ -59,7 +68,10 @@ tip: one or two sentences explaining the XYZ formula (accomplished X, measured b
 };
 
 /** Small, fast model for short tasks; the main model for everything else. */
-export const QUICK_TASKS = new Set<AiTask>(["insights", "parseCertificate", "coachBullet"]);
+export const QUICK_TASKS = new Set<AiTask>(["insights", "coachBullet", "analyzeJD"]);
+
+/** Tasks that accept an uploaded image. */
+export const IMAGE_TASKS = new Set<AiTask>(["verifyDocument"]);
 
 /** Creative tasks get a little more temperature; extraction stays deterministic. */
 export const TEMPERATURE: Partial<Record<AiTask, number>> = {
@@ -79,6 +91,6 @@ export const MAX_TOKENS: Partial<Record<AiTask, number>> = {
   coverLetter: 1500,
   analyzeJD: 1500,
   insights: 800,
-  parseCertificate: 400,
+  verifyDocument: 1200,
   coachBullet: 600,
 };

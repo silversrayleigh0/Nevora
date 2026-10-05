@@ -1,12 +1,13 @@
 // AI output is untrusted: coerce every response into the exact shape the UI expects.
 import type {
   BulletCoaching,
-  CertificateDetails,
   Gap,
   Insights,
   InterviewQuestion,
   JDAnalysis,
   Profile,
+  Proof,
+  ProofCheck,
   Requirement,
   SectionKey,
   SkillCategory,
@@ -38,6 +39,14 @@ export const emptyProfile = (name = "", email = ""): Profile => ({
 });
 
 const SKILL_CATEGORIES: SkillCategory[] = ["language", "framework", "tool", "concept", "soft"];
+
+/** Keeps a stored proof result only if it has the expected shape. */
+function normalizeProof(v: unknown): Proof | undefined {
+  const o = obj(v);
+  if (o.status !== "verified" && o.status !== "rejected") return undefined;
+  return { status: o.status, reason: str(o.reason), fileName: str(o.fileName), checkedAt: Number(o.checkedAt) || 0, documentType: str(o.documentType) };
+}
+const withProof = <T extends object>(item: T, proof: Proof | undefined): T => (proof ? { ...item, proof } : item);
 
 /** Normalizes a parsed or stored profile and guarantees unique, stable IDs. */
 export function normalizeProfile(input: unknown): Profile {
@@ -78,7 +87,7 @@ export function normalizeProfile(input: unknown): Profile {
     experience: arr(p.experience).map((e, i) => {
       const o = obj(e);
       const id = uid(o.id, `exp_${i + 1}`);
-      return { id, role: str(o.role), org: str(o.org), start: str(o.start), end: str(o.end), bullets: bullets(o.bullets, id) };
+      return withProof({ id, role: str(o.role), org: str(o.org), start: str(o.start), end: str(o.end), bullets: bullets(o.bullets, id) }, normalizeProof(o.proof));
     }),
     projects: arr(p.projects).map((e, i) => {
       const o = obj(e);
@@ -94,7 +103,10 @@ export function normalizeProfile(input: unknown): Profile {
     certifications: arr(p.certifications)
       .map((c, i) => {
         const o = obj(c);
-        return { id: uid(o.id, `cert_${i + 1}`), name: str(o.name), issuer: str(o.issuer), date: str(o.date), credential: str(o.credential) };
+        return withProof(
+          { id: uid(o.id, `cert_${i + 1}`), name: str(o.name), issuer: str(o.issuer), date: str(o.date), credential: str(o.credential) },
+          normalizeProof(o.proof),
+        );
       })
       .filter((c) => c.name),
     achievements: bullets(p.achievements, "ach").map((a, i) => ({ ...a, id: a.id.startsWith("ach") ? a.id : `ach_${i + 1}` })),
@@ -267,7 +279,37 @@ export function normalizeCoaching(v: unknown): BulletCoaching {
   return { score: num(o.score, 1, 5), missing: strings(o.missing), improved: str(o.improved), tip: str(o.tip) };
 }
 
-export function normalizeCertificate(v: unknown): CertificateDetails {
+const VERDICTS = ["verified", "mismatch", "unreadable", "not_a_document"] as const;
+
+/** A document is only "verified" when every check the model reported passed. */
+export function normalizeProofCheck(v: unknown, kind: "certificate" | "experience"): ProofCheck {
   const o = obj(v);
-  return { name: str(o.name), issuer: str(o.issuer), date: str(o.date), credential: str(o.credential) };
+  const check: ProofCheck = {
+    verdict: oneOf(o.verdict, VERDICTS, "unreadable"),
+    documentType: str(o.documentType),
+    holderName: str(o.holderName),
+    issuer: str(o.issuer),
+    title: str(o.title),
+    role: str(o.role),
+    date: str(o.date),
+    startDate: str(o.startDate),
+    endDate: str(o.endDate),
+    nameMatches: o.nameMatches === true,
+    detailsMatch: o.detailsMatch === true,
+    concerns: strings(o.concerns).slice(0, 4),
+    reason: str(o.reason),
+  };
+  if (check.verdict === "verified" && (!check.nameMatches || !check.detailsMatch || (kind === "certificate" && !check.title))) {
+    check.verdict = "mismatch";
+    if (!check.reason) check.reason = check.nameMatches ? "The details on the document don't match what you entered." : "The name on the document doesn't match your profile name.";
+  }
+  if (!check.reason) {
+    check.reason =
+      check.verdict === "verified"
+        ? "Looks good — the document matches your profile."
+        : check.verdict === "not_a_document"
+          ? "This doesn't look like a certificate or work document."
+          : "We couldn't read the key details. Try a clearer photo or the original PDF.";
+  }
+  return check;
 }

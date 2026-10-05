@@ -1,8 +1,11 @@
 import { useRef, useState, type ReactNode } from "react";
-import type { Bullet, Profile, SkillCategory } from "../../../shared/types";
-import { AwardIcon, CloseIcon, UploadIcon } from "../../components/icons";
+import type { Bullet, Profile, Proof, ProofCheck, SkillCategory } from "../../../shared/types";
+import { MonthYearField, SelectField, SkillPicker, YearField } from "../../components/form";
+import { AwardIcon, CheckIcon, CloseIcon, ShieldIcon, UploadIcon } from "../../components/icons";
 import { Button, Chip, TextField } from "../../components/ui";
-import { parseCertificate } from "../../lib/ai";
+import { verifyDocument, type ProofKind } from "../../lib/ai";
+import { PROOF_ACCEPT } from "../../lib/extract";
+import { BRANCHES, categorize, DEGREES } from "../../lib/options";
 import { newId } from "../../store/app";
 import { toast } from "../../store/toast";
 
@@ -84,16 +87,14 @@ const CATEGORIES: { id: SkillCategory; label: string }[] = [
 ];
 
 function Skills({ profile, update }: { profile: Profile; update: Update }) {
-  const [name, setName] = useState("");
   const [category, setCategory] = useState<SkillCategory>("tool");
-  const add = () => {
+  const add = (name: string, known?: SkillCategory) => {
     const value = name.trim();
-    if (!value || profile.skills.some((s) => s.name.toLowerCase() === value.toLowerCase())) return setName("");
-    update((p) => ({ ...p, skills: [...p.skills, { id: newId("skill"), name: value, category }] }));
-    setName("");
+    if (!value || profile.skills.some((s) => s.name.toLowerCase() === value.toLowerCase())) return;
+    update((p) => ({ ...p, skills: [...p.skills, { id: newId("skill"), name: value, category: known ?? category }] }));
   };
   return (
-    <Section id="skills" title={`Skills · ${profile.skills.length}`}>
+    <Section id="skills" title={`Skills · ${profile.skills.length}`} subtitle="Pick from the list, or type a skill that isn’t there.">
       {CATEGORIES.map((c) => {
         const items = profile.skills.filter((s) => s.category === c.id);
         if (!items.length) return null;
@@ -111,112 +112,153 @@ function Skills({ profile, update }: { profile: Profile; update: Update }) {
         );
       })}
       <div className="flex flex-col gap-2 sm:flex-row">
-        <label htmlFor="add-skill" className="sr-only">
-          Add a skill
-        </label>
-        <input
-          id="add-skill"
-          className="input"
-          placeholder="Add a skill, e.g. Tailwind CSS"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add();
-            }
-          }}
-        />
+        <SkillPicker taken={profile.skills.map((s) => s.name)} onPick={(name, known) => add(name, known ?? (categorize(name) !== "tool" ? categorize(name) : undefined))} />
         <label htmlFor="skill-cat" className="sr-only">
-          Category
+          Category for new skills you type
         </label>
-        <select id="skill-cat" className="input sm:w-44" value={category} onChange={(e) => setCategory(e.target.value as SkillCategory)}>
+        <select id="skill-cat" title="Category for skills you type yourself" className="input sm:w-44" value={category} onChange={(e) => setCategory(e.target.value as SkillCategory)}>
           {CATEGORIES.map((c) => (
             <option key={c.id} value={c.id}>
               {c.label}
             </option>
           ))}
         </select>
-        <Button variant="dark" onClick={add} className="h-[52px] shrink-0">
-          Add
-        </Button>
       </div>
     </Section>
   );
 }
 
-const EMPTY_CERT = { name: "", issuer: "", date: "", credential: "" };
-
-function Certifications({ profile, update }: { profile: Profile; update: Update }) {
-  const [draft, setDraft] = useState(EMPTY_CERT);
-  const [reading, setReading] = useState(false);
-  const [message, setMessage] = useState("");
-  const file = useRef<HTMLInputElement>(null);
-  const save = () => {
-    if (!draft.name.trim()) return setMessage("Add the certificate name.");
-    update((p) => ({ ...p, certifications: [...p.certifications, { ...draft, name: draft.name.trim(), id: newId("cert") }] }));
-    toast(`Added ${draft.name.trim()}`);
-    setDraft(EMPTY_CERT);
-    setMessage("");
-  };
-  const read = async (f?: File) => {
-    if (!f) return;
-    setReading(true);
-    setMessage("");
+/** Upload a document and show whether it checked out. */
+function ProofRow({
+  proof,
+  label,
+  hint,
+  kind,
+  expected,
+  onChecked,
+}: {
+  proof?: Proof;
+  label: string;
+  hint: string;
+  kind: ProofKind;
+  expected: () => { name: string; org?: string; role?: string; start?: string; end?: string };
+  onChecked: (check: ProofCheck, proof: Proof) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    setError("");
     try {
-      setDraft({ ...EMPTY_CERT, ...(await parseCertificate(f)) });
-      setMessage("We filled in the details from your certificate. Check them, then save.");
+      const check = await verifyDocument(file, kind, expected());
+      const result: Proof = {
+        status: check.verdict === "verified" ? "verified" : "rejected",
+        reason: [check.reason, ...check.concerns].filter(Boolean).join(" "),
+        fileName: file.name,
+        checkedAt: Date.now(),
+        documentType: check.documentType,
+      };
+      onChecked(check, result);
     } catch (err) {
-      setMessage((err as Error).message);
+      setError((err as Error).message);
     } finally {
-      setReading(false);
-      if (file.current) file.current.value = "";
+      setBusy(false);
+      if (input.current) input.current.value = "";
     }
   };
+  const verified = proof?.status === "verified";
   return (
-    <Section id="certifications" highlight={!profile.certifications.length} title="Certifications" subtitle="Certificates strengthen your profile for specific roles. Add any you’ve earned.">
-      {profile.certifications.map((c) => (
-        <div key={c.id} className="flex items-center gap-3.5 rounded-2xl bg-surface px-4 py-4">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-brand">
-            <AwardIcon />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="font-semibold">{c.name}</div>
-            <div className="mt-0.5 text-sm text-muted">{[c.issuer, c.date, c.credential ? "Credential linked" : ""].filter(Boolean).join(" · ")}</div>
-          </div>
-          <RemoveButton label={`Remove ${c.name}`} onClick={() => update((p) => ({ ...p, certifications: p.certifications.filter((x) => x.id !== c.id) }))} />
-        </div>
-      ))}
-      <h3 className="text-[15px] font-semibold">Add a certification</h3>
-      <div className="grid gap-3.5 sm:grid-cols-2">
-        <TextField label="Certificate name" placeholder="e.g. Meta Front-End Developer" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-        <TextField label="Issuing organization" placeholder="e.g. Coursera" value={draft.issuer} onChange={(e) => setDraft({ ...draft, issuer: e.target.value })} />
-        <TextField label="Issue date" placeholder="Month and year" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
-        <TextField label="Credential ID or link" optional placeholder="https://" value={draft.credential} onChange={(e) => setDraft({ ...draft, credential: e.target.value })} />
-      </div>
-      <div className="flex items-center gap-3.5 rounded-2xl border-[1.5px] border-dashed border-[#C7C7CC] p-4">
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-brand">
-          <UploadIcon size={18} />
+    <div className={`flex flex-col gap-2 rounded-2xl p-4 ${verified ? "bg-ok-soft" : proof ? "bg-warn-soft" : "border-[1.5px] border-dashed border-[#C7C7CC]"}`}>
+      <div className="flex items-center gap-3.5">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${verified ? "bg-white text-ok" : "bg-brand-soft text-brand"}`}>
+          {verified ? <ShieldIcon size={20} /> : <UploadIcon size={18} />}
         </span>
-        <div className="flex-1">
-          <div className="text-[15px] font-medium">Or upload the certificate</div>
-          <div className="mt-0.5 text-sm text-muted">PDF or image. We’ll fill in the details for you.</div>
+        <div className="min-w-0 flex-1">
+          <div className={`text-[15px] font-medium ${verified ? "text-ok" : proof ? "text-warn" : ""}`}>
+            {verified ? `Verified${proof?.documentType ? ` · ${proof.documentType}` : ""}` : proof ? "Couldn’t verify" : label}
+          </div>
+          <div className="mt-0.5 text-sm text-muted">{proof ? proof.reason || proof.fileName : hint}</div>
         </div>
-        <input ref={file} type="file" accept="application/pdf,image/png,image/jpeg,image/webp" className="sr-only" id="cert-file" onChange={(e) => read(e.target.files?.[0])} />
-        <Button variant="secondary" size="sm" loading={reading} onClick={() => file.current?.click()}>
-          Upload
+        <input ref={input} type="file" accept={PROOF_ACCEPT} className="sr-only" onChange={(e) => upload(e.target.files?.[0])} aria-label={label} />
+        <Button variant="secondary" size="sm" loading={busy} onClick={() => input.current?.click()}>
+          {busy ? "Checking" : proof ? "Replace" : "Upload"}
         </Button>
       </div>
-      {message && (
-        <p role="status" className="text-sm text-muted">
-          {message}
+      {error && (
+        <p role="alert" className="text-sm text-bad">
+          {error}
         </p>
       )}
-      <div className="flex justify-end">
-        <Button variant="dark" onClick={save}>
-          Save certification
-        </Button>
-      </div>
+    </div>
+  );
+}
+
+function Certifications({ profile, update }: { profile: Profile; update: Update }) {
+  const verified = profile.certifications.filter((c) => c.proof?.status === "verified").length;
+  const addFromCheck = (check: ProofCheck, proof: Proof, existingId?: string) => {
+    if (proof.status !== "verified") {
+      if (existingId) update((p) => ({ ...p, certifications: p.certifications.map((c) => (c.id === existingId ? { ...c, proof } : c)) }));
+      else toast("That certificate couldn’t be verified, so it wasn’t added.");
+      return;
+    }
+    const details = { name: check.title || check.documentType, issuer: check.issuer, date: check.date, credential: "" };
+    update((p) => {
+      const match = existingId ?? p.certifications.find((c) => c.name.toLowerCase() === details.name.toLowerCase())?.id;
+      return match
+        ? { ...p, certifications: p.certifications.map((c) => (c.id === match ? { ...c, ...details, proof } : c)) }
+        : { ...p, certifications: [...p.certifications, { id: newId("cert"), ...details, proof }] };
+    });
+    toast(`Verified ${details.name}`);
+  };
+  const [lastRejected, setLastRejected] = useState<Proof | undefined>();
+  return (
+    <Section
+      id="certifications"
+      highlight={!verified}
+      title="Certifications"
+      subtitle="Upload a photo, scan or PDF of each certificate. Nevora reads it, checks it’s issued to you, and adds it. Only verified certificates appear on your resumes."
+    >
+      {profile.certifications.map((c) => {
+        const ok = c.proof?.status === "verified";
+        return (
+          <div key={c.id} className="flex flex-col gap-3 rounded-2xl bg-surface px-4 py-4">
+            <div className="flex items-center gap-3.5">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-white ${ok ? "text-ok" : "text-brand"}`}>{ok ? <CheckIcon size={18} /> : <AwardIcon />}</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">{c.name}</div>
+                <div className="mt-0.5 text-sm text-muted">
+                  {[c.issuer, c.date].filter(Boolean).join(" · ")}
+                  {ok ? <span className="text-ok"> · Verified</span> : <span className="text-warn"> · Not verified — hidden from resumes</span>}
+                </div>
+              </div>
+              <RemoveButton label={`Remove ${c.name}`} onClick={() => update((p) => ({ ...p, certifications: p.certifications.filter((x) => x.id !== c.id) }))} />
+            </div>
+            {!ok && (
+              <ProofRow
+                proof={c.proof}
+                kind="certificate"
+                label="Verify this certificate"
+                hint="Upload the certificate to show it on your resumes."
+                expected={() => ({ name: profile.basics.name })}
+                onChecked={(check, proof) => addFromCheck(check, proof, c.id)}
+              />
+            )}
+          </div>
+        );
+      })}
+      <ProofRow
+        proof={lastRejected}
+        kind="certificate"
+        label="Upload a certificate"
+        hint="PNG, JPG or PDF. We’ll read the name, issuer and date for you."
+        expected={() => ({ name: profile.basics.name })}
+        onChecked={(check, proof) => {
+          setLastRejected(proof.status === "verified" ? undefined : proof);
+          addFromCheck(check, proof);
+        }}
+      />
     </Section>
   );
 }
@@ -263,11 +305,13 @@ export default function ProfileEditor({ profile, onChange }: { profile: Profile;
             <div key={e.id} className="flex items-start gap-2">
               <div className="grid flex-1 gap-3.5 sm:grid-cols-2">
                 <TextField id={`${e.id}-inst`} label="College" value={e.institution} onChange={(ev) => set({ institution: ev.target.value })} />
-                <TextField id={`${e.id}-deg`} label="Degree" placeholder="e.g. B.Tech" value={e.degree} onChange={(ev) => set({ degree: ev.target.value })} />
-                <TextField id={`${e.id}-field`} label="Branch or field" value={e.field} onChange={(ev) => set({ field: ev.target.value })} />
-                <TextField id={`${e.id}-score`} label="CGPA or percentage" optional value={e.score} onChange={(ev) => set({ score: ev.target.value })} />
-                <TextField id={`${e.id}-start`} label="Start year" value={e.start} onChange={(ev) => set({ start: ev.target.value })} />
-                <TextField id={`${e.id}-end`} label="End year" value={e.end} onChange={(ev) => set({ end: ev.target.value })} />
+                <SelectField id={`${e.id}-deg`} label="Degree" placeholder="Select degree" options={DEGREES} value={e.degree} onChange={(v) => set({ degree: v })} />
+                <SelectField id={`${e.id}-field`} label="Branch or field" placeholder="Select branch" options={BRANCHES} value={e.field} onChange={(v) => set({ field: v })} />
+                <TextField id={`${e.id}-score`} label="CGPA or percentage" optional placeholder="e.g. CGPA 8.4 or 82%" value={e.score} onChange={(ev) => set({ score: ev.target.value })} />
+                <div className="grid grid-cols-2 gap-3.5">
+                  <YearField id={`${e.id}-start`} label="Start year" value={e.start} onChange={(v) => set({ start: v })} />
+                  <YearField id={`${e.id}-end`} label="End year" value={e.end} onChange={(v) => set({ end: v })} />
+                </div>
               </div>
               <RemoveButton label="Remove education" onClick={() => remove(e.institution || "education", (p) => ({ ...p, education: p.education.filter((x) => x.id !== e.id) }))} />
             </div>
@@ -319,7 +363,7 @@ export default function ProfileEditor({ profile, onChange }: { profile: Profile;
       <Section
         id="experience"
         title="Experience"
-        subtitle="Internships, part-time work, freelance or volunteering."
+        subtitle="Internships, part-time work, freelance or volunteering. Add proof so recruiters can trust it."
         action={
           <AddLink
             onClick={() =>
@@ -332,20 +376,38 @@ export default function ProfileEditor({ profile, onChange }: { profile: Profile;
       >
         {!profile.experience.length && <p className="text-muted">No experience yet? That’s fine — strong projects count.</p>}
         {profile.experience.map((ex, i) => {
+          // Changing what the proof vouches for clears the old check.
           const set = (patch: Partial<Profile["experience"][number]>) =>
-            update((p) => ({ ...p, experience: p.experience.map((x) => (x.id === ex.id ? { ...x, ...patch } : x)) }));
+            update((p) => ({
+              ...p,
+              experience: p.experience.map((x) => {
+                if (x.id !== ex.id) return x;
+                const next = { ...x, ...patch };
+                const claimChanged = ["role", "org", "start", "end"].some((k) => k in patch && patch[k as keyof typeof patch] !== x[k as keyof typeof x]);
+                if (claimChanged && next.proof) delete next.proof;
+                return next;
+              }),
+            }));
           return (
             <div key={ex.id} className={`flex flex-col gap-3.5 ${i ? "border-t border-[#EDEDF0] pt-5" : ""}`}>
               <div className="flex items-start gap-2">
                 <div className="grid flex-1 gap-3.5 sm:grid-cols-2">
                   <TextField id={`${ex.id}-role`} label="Role" value={ex.role} onChange={(e) => set({ role: e.target.value })} />
                   <TextField id={`${ex.id}-org`} label="Organization" value={ex.org} onChange={(e) => set({ org: e.target.value })} />
-                  <TextField id={`${ex.id}-start`} label="Start" placeholder="Jun 2025" value={ex.start} onChange={(e) => set({ start: e.target.value })} />
-                  <TextField id={`${ex.id}-end`} label="End" placeholder="Jul 2025 or Present" value={ex.end} onChange={(e) => set({ end: e.target.value })} />
+                  <MonthYearField id={`${ex.id}-start`} label="Start" value={ex.start} onChange={(v) => set({ start: v })} />
+                  <MonthYearField id={`${ex.id}-end`} label="End" value={ex.end} onChange={(v) => set({ end: v })} allowPresent />
                 </div>
                 <RemoveButton label={`Remove ${ex.role || "experience"}`} onClick={() => remove(ex.role || "experience", (p) => ({ ...p, experience: p.experience.filter((x) => x.id !== ex.id) }))} />
               </div>
               <Bullets bullets={ex.bullets} parent={ex.id} onChange={(bullets) => set({ bullets })} />
+              <ProofRow
+                proof={ex.proof}
+                kind="experience"
+                label="Add proof of this role"
+                hint="Offer letter, internship certificate or experience letter (PNG, JPG or PDF)."
+                expected={() => ({ name: profile.basics.name, org: ex.org, role: ex.role, start: ex.start, end: ex.end })}
+                onChecked={(_, proof) => update((p) => ({ ...p, experience: p.experience.map((x) => (x.id === ex.id ? { ...x, proof } : x)) }))}
+              />
             </div>
           );
         })}
@@ -412,11 +474,11 @@ export function sectionStatus(p: Profile, key: (typeof PROFILE_SECTIONS)[number]
     case "projects":
       return p.projects.length && !p.projects.some((x) => x.bullets.length && !x.bullets.some((b) => /\d/.test(b.text))) ? "done" : "attention";
     case "experience":
-      return p.experience.length ? "done" : "empty";
+      return !p.experience.length ? "empty" : p.experience.every((x) => x.proof?.status === "verified") ? "done" : "attention";
     case "skills":
       return p.skills.length >= 3 ? "done" : "attention";
     case "certifications":
-      return p.certifications.length ? "done" : "attention";
+      return p.certifications.some((c) => c.proof?.status === "verified") ? "done" : "attention";
     case "achievements":
       return p.achievements.length ? "done" : "empty";
     case "links":

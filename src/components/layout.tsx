@@ -5,6 +5,7 @@ import { useAiMode } from "../lib/ai";
 import { retryLoad, signOut } from "../lib/session";
 import { isSignedIn, useActiveApplication, useApp } from "../store/app";
 import { useToasts, type Toast } from "../store/toast";
+import { Spinner } from "./icons";
 import { Button } from "./ui";
 
 export function Logo({ to = "/" }: { to?: string }) {
@@ -244,7 +245,26 @@ export function Toasts() {
   );
 }
 
-const Blank = () => <div className="min-h-screen" aria-busy="true" />;
+/** Shown while the session or profile loads; the spinner appears only if it takes a moment. */
+function Blank() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShow(true), 400);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="flex min-h-screen items-center justify-center" aria-busy="true">
+      {show && (
+        <div role="status" className="flex items-center gap-3 text-[15px] text-muted">
+          <span className="text-brand">
+            <Spinner size={18} />
+          </span>
+          Loading your profile…
+        </div>
+      )}
+    </div>
+  );
+}
 
 function LoadFailed({ message }: { message: string }) {
   const navigate = useNavigate();

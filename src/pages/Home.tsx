@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router";
 import type { Application } from "../../shared/types";
 import { AppHeader, RequireSession } from "../components/layout";
 import { Button, EmptyState, ScoreRing, scoreDot } from "../components/ui";
-import { insights as fetchInsights } from "../lib/ai";
+import { aiOffMessage, insights as fetchInsights } from "../lib/ai";
 import { profileStrength } from "../lib/engine";
 import { useApp } from "../store/app";
 import { toast } from "../store/toast";
@@ -242,7 +242,7 @@ function Dashboard() {
     try {
       const result = await fetchInsights(profile, account?.interests);
       if (result) setInsights(result);
-      else toast("Strength analysis needs Live AI. Try again later.");
+      else toast(`${aiOffMessage()}, so strengths can’t be analyzed yet.`);
     } catch (err) {
       toast((err as Error).message);
     }
