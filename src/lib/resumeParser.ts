@@ -2,7 +2,7 @@
 // written and never infers anything; Live AI gives better structure when available.
 import type { Profile } from "../../shared/types";
 import { categorize, DEGREES } from "./options";
-import { normalizeProfile } from "./normalize";
+import { BULLET_GLYPHS, DOT_LEADER, meaningful, normalizeProfile } from "./normalize";
 
 type Section = "header" | "summary" | "education" | "skills" | "projects" | "experience" | "certifications" | "achievements" | "ignore";
 
@@ -17,7 +17,12 @@ const HEADINGS: [RegExp, Section][] = [
   [/^(languages( known)?|hobbies|interests|references|declaration|personal details)$/i, "ignore"],
 ];
 
-const BULLET = /^\s*(?:[-•*▪●◦‣–]|\d+[.)])\s+/;
+/** A bullet glyph (space optional: PDFs often drop it), a dash or star with a space, or "1." / "1)". */
+const BULLET = new RegExp(`^\\s*(?:[${BULLET_GLYPHS}]\\s*|[-*–]\\s+|\\d+[.)]\\s+)`, "u");
+/** A line that is nothing but bullet glyphs or dashes: pdf.js often puts the bullet on its own line. */
+const LONE_BULLET = new RegExp(`^\\s*(?:[${BULLET_GLYPHS}]+|[-*–])\\s*$`, "u");
+/** Several bullets that landed on one line ("• Built X • Added Y"). Not "·" or "-", which also separate words. */
+const INLINE_BULLET = /\s+[•●▪◦‣∙○■►▶➢➤✓✔❖\uF0A7\uF0B7\uF076\uF0D8\uF0FC]\s+/u;
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.]+/;
 const PHONE = /\+?\d[\d\s().-]{7,}\d/;
 const LINK = /(?:https?:\/\/)?(?:www\.)?(?:linkedin\.com|github\.com|gitlab\.com|behance\.net|dribbble\.com|[\w-]+\.(?:dev|io|me|app|vercel\.app|netlify\.app))\/?[\w\-./?=#%]*/i;
@@ -26,6 +31,7 @@ const SEPARATOR = /\s+[—–|]\s+|\s+-\s+|\s+@\s+|\s+at\s+/i;
 
 const clean = (s: string) =>
   s
+    .replace(DOT_LEADER, " ")
     .replace(/\*\*|__|`/g, "")
     .replace(/^#+\s*/, "")
     .replace(/\s+/g, " ")
@@ -63,9 +69,12 @@ function takeDates(line: string): { text: string; start: string; end: string } {
 
 type Entry = { title: string; lines: string[]; bullets: string[] };
 
+/** One bullet per line: inline bullets split apart. */
+const splitBullets = (lines: string[]) => lines.flatMap((l) => (BULLET.test(l) ? l.split(INLINE_BULLET).map((part, i) => (i ? `• ${part}` : part)) : [l]));
+
 function entries(lines: string[]): Entry[] {
   const out: Entry[] = [];
-  for (const line of lines) {
+  for (const line of splitBullets(lines)) {
     if (BULLET.test(line)) {
       const text = clean(line.replace(BULLET, ""));
       if (!text) continue;
@@ -85,12 +94,24 @@ function entries(lines: string[]): Entry[] {
 
 const splitList = (s: string) =>
   s
-    .split(/\s*[,;|·•/]\s*|\s+and\s+/)
-    .map((x) => x.replace(/^[-*]\s*/, "").replace(/\.$/, "").trim())
-    .filter((x) => x && x.length <= 40);
+    .split(new RegExp(`\\s*[,;|/${BULLET_GLYPHS}]\\s*|\\s+and\\s+`, "u"))
+    .map((x) => x.replace(BULLET, "").replace(/^[-*]\s*/, "").replace(/\.$/, "").trim())
+    .filter((x) => meaningful(x) && x.length <= 40);
 
 export function parseResumeText(raw: string): Profile {
-  const lines = raw.replace(/\r/g, "").split("\n");
+  // A bullet glyph alone on its line belongs to the next line.
+  const lines: string[] = [];
+  let pendingBullet = false;
+  for (const line of raw.replace(/\r/g, "").split("\n")) {
+    if (LONE_BULLET.test(line)) {
+      pendingBullet = true;
+      continue;
+    }
+    if (pendingBullet && line.trim()) {
+      lines.push(headingOf(line) ? line : `• ${line.trim()}`);
+      pendingBullet = false;
+    } else lines.push(line);
+  }
   const buckets: Record<Section, string[]> = { header: [], summary: [], education: [], skills: [], projects: [], experience: [], certifications: [], achievements: [], ignore: [] };
   let current: Section = "header";
   for (const line of lines) {
@@ -110,7 +131,7 @@ export function parseResumeText(raw: string): Profile {
   const nameLine = buckets.header.map(clean).find((l) => l && !EMAIL.test(l) && !PHONE.test(l) && !LINK.test(l) && /^[\p{L} .'-]{2,60}$/u.test(l));
   const location =
     headerText
-      .split(/\s*[|·•]\s*/)
+      .split(new RegExp(`\\s*[|${BULLET_GLYPHS}]\\s*`, "u"))
       .map((p) => p.trim())
       .find((p) => p && p !== nameLine && !EMAIL.test(p) && !PHONE.test(p) && !LINK.test(p) && /^[\p{L} ,.-]{2,40}$/u.test(p) && p.split(" ").length <= 4) ?? "";
 
@@ -135,6 +156,7 @@ export function parseResumeText(raw: string): Profile {
   const skills: { id: string; name: string; category: string }[] = [];
   for (const line of buckets.skills) {
     const text = clean(line.replace(BULLET, ""));
+    if (!meaningful(text)) continue;
     const [label, rest] = text.includes(":") ? [text.slice(0, text.indexOf(":")), text.slice(text.indexOf(":") + 1)] : ["", text];
     const hint = /language/i.test(label) ? "language" : /framework|librar/i.test(label) ? "framework" : /tool|platform|database|cloud/i.test(label) ? "tool" : /soft/i.test(label) ? "soft" : /concept|core|area/i.test(label) ? "concept" : "";
     for (const name of splitList(rest)) {
@@ -173,9 +195,9 @@ export function parseResumeText(raw: string): Profile {
     };
   });
 
-  const certifications = buckets.certifications
+  const certifications = splitBullets(buckets.certifications)
     .map((l) => clean(l.replace(BULLET, "")))
-    .filter(Boolean)
+    .filter(meaningful)
     .map((l, i) => {
       const ranged = takeDates(l);
       // A single trailing date: "(2024)", ", Mar 2024", "– 2024".
@@ -185,9 +207,9 @@ export function parseResumeText(raw: string): Profile {
       return { id: `cert_${i + 1}`, name: name.trim(), issuer: (issuer ?? "").trim(), date: ranged.start || single?.[1] || "", credential: "" };
     });
 
-  const achievements = buckets.achievements
+  const achievements = splitBullets(buckets.achievements)
     .map((l) => clean(l.replace(BULLET, "")))
-    .filter(Boolean)
+    .filter(meaningful)
     .map((text, i) => ({ id: `ach_${i + 1}`, text }));
 
   return normalizeProfile({

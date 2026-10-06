@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeProfile } from "../src/lib/normalize";
 import { parseResumeText } from "../src/lib/resumeParser";
 
 const MARKDOWN = `# Arun Kumar
@@ -79,5 +80,86 @@ describe("parseResumeText", () => {
     expect(q.basics.name).toBe("Priya S");
     expect(q.projects[0]).toMatchObject({ name: "Todo App", tech: ["React"] });
     expect(q.skills.map((s) => s.name)).toEqual(["Java", "C++"]);
+  });
+});
+
+describe("bullet glyphs never become entries", () => {
+  // Text as pdf.js reads real resumes: bullets on their own line, glued to the text,
+  // Word's private-use bullet, several bullets on one line, and dot leaders.
+  const PDF_TEXT = `Arun Kumar
+Chennai ● arun@example.com ● +91 98765 43210
+Skills
+Languages: JavaScript ● Python ● SQL
+•
+Frameworks: React, Flask
+Projects
+Campus Events Portal | React, Flask
+•
+Built a portal for students to register for college events
+•Added an admin page to manage events
+Experience
+Web Development Intern — Sample Tech ........ Jun 2025 – Jul 2025
+ Built React pages for the dashboard
+• Fixed layout bugs • Wrote unit tests for forms
+·
+Certifications
+●
+AWS Cloud Practitioner (2024)
+Achievements
+▪ Won the college hackathon`;
+
+  const p = parseResumeText(PDF_TEXT);
+  const everything = JSON.stringify(p);
+
+  it("keeps no item that is only a bullet or dots", () => {
+    for (const glyph of ['"•"', '"●"', '"·"', '"▪"', '"\uF0B7"', "...."]) expect(everything).not.toContain(glyph);
+    expect(p.projects.map((x) => x.name)).toEqual(["Campus Events Portal"]);
+    expect(p.experience).toHaveLength(1);
+  });
+
+  it("attaches a bullet on its own line to the next line", () => {
+    expect(p.projects[0].bullets.map((b) => b.text)).toEqual(["Built a portal for students to register for college events", "Added an admin page to manage events"]);
+  });
+
+  it("reads Word bullets, inline bullets and dot leaders", () => {
+    const e = p.experience[0];
+    expect([e.role, e.org, e.start, e.end]).toEqual(["Web Development Intern", "Sample Tech", "Jun 2025", "Jul 2025"]);
+    expect(e.bullets.map((b) => b.text)).toEqual(["Built React pages for the dashboard", "Fixed layout bugs", "Wrote unit tests for forms"]);
+  });
+
+  it("splits skills on bullet separators", () => {
+    expect(p.skills.map((s) => s.name)).toEqual(["JavaScript", "Python", "SQL", "React", "Flask"]);
+  });
+
+  it("keeps certifications and achievements without their bullets", () => {
+    expect(p.certifications.map((c) => [c.name, c.date])).toEqual([["AWS Cloud Practitioner", "2024"]]);
+    expect(p.achievements.map((a) => a.text)).toEqual(["Won the college hackathon"]);
+  });
+
+  it("doesn't treat a markdown rule as a bullet", () => {
+    const md = parseResumeText("Arun Kumar\n---\nSkills\nReact, SQL\n---\nProjects\nPortal\n- Built it");
+    expect(md.skills.map((s) => s.name)).toEqual(["React", "SQL"]);
+    expect(md.projects.map((x) => x.name)).toEqual(["Portal"]);
+  });
+});
+
+describe("normalizeProfile drops punctuation-only items (AI output and stored data)", () => {
+  const p = normalizeProfile({
+    basics: { name: "Arun" },
+    skills: ["•", "React", { name: "● Docker" }, "...", ".NET", "C#"],
+    projects: [{ name: "•", bullets: ["•"] }, { name: "Portal", bullets: ["• Built it", "·", "Added X........"] }, { name: "", bullets: [] }],
+    experience: [{ role: "●", org: "", bullets: [] }, { role: "Intern", org: "Acme", bullets: [{ text: " Did a thing" }] }],
+    certifications: [{ name: "▪" }, { name: "AWS" }],
+    achievements: ["•", "Won"],
+  });
+  it("removes bullets and dot leaders but keeps real text", () => {
+    expect(p.skills.map((s) => s.name)).toEqual(["React", "Docker", ".NET", "C#"]);
+    expect(p.projects.map((x) => [x.name, x.bullets.map((b) => b.text)])).toEqual([
+      ["Portal", ["Built it", "Added X"]],
+      ["", []],
+    ]);
+    expect(p.experience.map((e) => [e.role, e.bullets.map((b) => b.text)])).toEqual([["Intern", ["Did a thing"]]]);
+    expect(p.certifications.map((c) => c.name)).toEqual(["AWS"]);
+    expect(p.achievements.map((a) => a.text)).toEqual(["Won"]);
   });
 });

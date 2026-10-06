@@ -26,7 +26,25 @@ const num = (v: unknown, lo = 0, hi = 100): number => {
 };
 const oneOf = <T extends string>(v: unknown, options: readonly T[], fallback: T): T =>
   options.includes(v as T) ? (v as T) : fallback;
+/**
+ * Bullet and list glyphs seen in resumes, including the private-use symbols Word and
+ * Google Docs export for their default bullets (\uF0B7, \uF0A7, \uF076, \uF0D8, \uF0FC).
+ */
+export const BULLET_GLYPHS = "•●▪◦‣∙⁃○■□►▶➢➤✓✔❖·\u25AA-\u25FF\uF0A7\uF0B7\uF076\uF0D8\uF0FC";
+const LEADING_BULLETS = new RegExp(`^(?:[${BULLET_GLYPHS}]+\\s*|[-*–—]+\\s+)+`, "u");
+/** Three or more dots (or middle dots / ellipses) in a row: dot leaders between a title and a date. */
+export const DOT_LEADER = /(?:\s*[.·…]){3,}\s*/g;
+/** True when the text holds at least one letter or digit, i.e. it isn't just bullets or punctuation. */
+export const meaningful = (s: string) => /[\p{L}\p{N}]/u.test(s);
+/** Text with stray bullet glyphs and dot leaders removed; "" when nothing real is left. */
+export const tidy = (v: unknown): string => {
+  const t = str(v).replace(LEADING_BULLETS, "").replace(DOT_LEADER, " ").replace(/\s+/g, " ").trim();
+  return meaningful(t) ? t : "";
+};
+/** An entry that had text, all of it bullets or punctuation (blank rows the user added are kept). */
+const junk = (before: unknown[], after: string[]) => before.some((v) => str(v).trim()) && !after.some(Boolean);
 const strings = (v: unknown) => arr(v).map(str).map((s) => s.trim()).filter(Boolean);
+const tidyStrings = (v: unknown) => arr(v).map(tidy).filter(Boolean);
 
 export const emptyProfile = (name = "", email = ""): Profile => ({
   basics: { name, email, phone: "", location: "", links: [] },
@@ -62,7 +80,7 @@ export function normalizeProfile(input: unknown): Profile {
   };
   const bullets = (v: unknown, prefix: string) =>
     arr(v)
-      .map((b, i) => ({ id: uid(obj(b).id, `${prefix}_b${i + 1}`), text: str(typeof b === "string" ? b : obj(b).text).trim() }))
+      .map((b, i) => ({ id: uid(obj(b).id, `${prefix}_b${i + 1}`), text: tidy(typeof b === "string" ? b : obj(b).text) }))
       .filter((b) => b.text);
   return {
     basics: {
@@ -73,40 +91,45 @@ export function normalizeProfile(input: unknown): Profile {
       links: strings(basics.links),
       ...(typeof basics.photo === "string" && /^data:image\/(jpeg|png);base64,/.test(basics.photo) && basics.photo.length < 300_000 ? { photo: basics.photo } : {}),
     },
-    summary: str(p.summary),
-    education: arr(p.education).map((e, i) => {
-      const o = obj(e);
-      return {
+    summary: tidy(p.summary),
+    education: arr(p.education)
+      .map(obj)
+      .filter((o) => !junk([o.institution, o.degree, o.field], [tidy(o.institution), tidy(o.degree), tidy(o.field)]))
+      .map((o, i) => ({
         id: uid(o.id, `edu_${i + 1}`),
-        institution: str(o.institution),
-        degree: str(o.degree),
-        field: str(o.field),
+        institution: tidy(o.institution),
+        degree: tidy(o.degree),
+        field: tidy(o.field),
         start: str(o.start),
         end: str(o.end),
         score: str(o.score),
-      };
-    }),
-    experience: arr(p.experience).map((e, i) => {
-      const o = obj(e);
-      const id = uid(o.id, `exp_${i + 1}`);
-      return withProof({ id, role: str(o.role), org: str(o.org), start: str(o.start), end: str(o.end), bullets: bullets(o.bullets, id) }, normalizeProof(o.proof));
-    }),
-    projects: arr(p.projects).map((e, i) => {
-      const o = obj(e);
-      const id = uid(o.id, `proj_${i + 1}`);
-      return { id, name: str(o.name), tech: strings(o.tech), link: str(o.link), bullets: bullets(o.bullets, id) };
-    }),
+      })),
+    experience: arr(p.experience)
+      .map(obj)
+      .map((o) => ({ o, role: tidy(o.role), org: tidy(o.org) }))
+      .filter(({ o, role, org }) => !junk([o.role, o.org, ...arr(o.bullets).map((b) => (typeof b === "string" ? b : obj(b).text))], [role, org, ...arr(o.bullets).map((b) => tidy(typeof b === "string" ? b : obj(b).text))]))
+      .map(({ o, role, org }, i) => {
+        const id = uid(o.id, `exp_${i + 1}`);
+        return withProof({ id, role, org, start: str(o.start), end: str(o.end), bullets: bullets(o.bullets, id) }, normalizeProof(o.proof));
+      }),
+    projects: arr(p.projects)
+      .map(obj)
+      .filter((o) => !junk([o.name, ...arr(o.bullets).map((b) => (typeof b === "string" ? b : obj(b).text))], [tidy(o.name), ...arr(o.bullets).map((b) => tidy(typeof b === "string" ? b : obj(b).text))]))
+      .map((o, i) => {
+        const id = uid(o.id, `proj_${i + 1}`);
+        return { id, name: tidy(o.name), tech: tidyStrings(o.tech), link: str(o.link), bullets: bullets(o.bullets, id) };
+      }),
     skills: arr(p.skills)
       .map((s, i) => {
         const o = obj(s);
-        return { id: uid(o.id, `skill_${i + 1}`), name: str(typeof s === "string" ? s : o.name).trim(), category: oneOf(o.category, SKILL_CATEGORIES, "tool") };
+        return { id: uid(o.id, `skill_${i + 1}`), name: tidy(typeof s === "string" ? s : o.name), category: oneOf(o.category, SKILL_CATEGORIES, "tool") };
       })
       .filter((s) => s.name),
     certifications: arr(p.certifications)
       .map((c, i) => {
         const o = obj(c);
         return withProof(
-          { id: uid(o.id, `cert_${i + 1}`), name: str(o.name), issuer: str(o.issuer), date: str(o.date), credential: str(o.credential) },
+          { id: uid(o.id, `cert_${i + 1}`), name: tidy(o.name), issuer: tidy(o.issuer), date: str(o.date), credential: str(o.credential) },
           normalizeProof(o.proof),
         );
       })
