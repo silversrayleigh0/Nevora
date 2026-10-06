@@ -1,11 +1,24 @@
 import { useId, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { CheckIcon } from "../components/icons";
+import { CheckIcon, SparkleIcon } from "../components/icons";
 import { RequireSession, SetupHeader } from "../components/layout";
 import { Button } from "../components/ui";
-import { isLinkedInLink, LINKEDIN_URL_ERROR, normalizeLinkedInUrl } from "../lib/linkedinUrl";
+import { isLinkedInLink, LINKEDIN_URL_ERROR, normalizeLinkedInUrl, type LinkedInSource } from "../lib/linkedinUrl";
 import { useApp } from "../store/app";
 import { useSetup } from "../store/setup";
+
+/** The "we did this for you" marker on an auto-detected link. */
+const AutoBadge = ({ children = "Auto-detected" }: { children?: string }) => (
+  <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1 text-[13px] font-semibold text-brand-ink">
+    <SparkleIcon size={13} className="text-brand" />
+    {children}
+  </span>
+);
+
+const SOURCE_NOTE: Record<LinkedInSource, string> = {
+  text: "Spotted in your resume text, so you don’t have to copy and paste it.",
+  hyperlink: "Found behind the “LinkedIn” link in your resume, even though the URL wasn’t written out.",
+};
 
 /**
  * Last setup step: confirm the LinkedIn profile URL found in the resume (text or hidden
@@ -24,9 +37,11 @@ function LinkedInUrlCard() {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
+  const [savedFrom, setSavedFrom] = useState<LinkedInSource | null>(null);
   if (!profile) return null;
 
-  const save = (url: string) => {
+  const save = (url: string, from: LinkedInSource | null = null) => {
+    setSavedFrom(from);
     setProfile({ ...profile, basics: { ...profile.basics, links: [...profile.basics.links.filter((l) => !isLinkedInLink(l)), url] } });
     setFound(null);
     setEditing(false);
@@ -57,15 +72,25 @@ function LinkedInUrlCard() {
         <div className="min-w-0 flex-1">
           {mode === "confirm" && found && (
             <>
-              <h2 className="text-[22px] font-semibold tracking-[-0.02em]">Is this your LinkedIn?</h2>
+              <AutoBadge />
+              <h2 className="mt-3 text-[22px] font-semibold tracking-[-0.02em]">Is this your LinkedIn?</h2>
               <p className="mt-1 text-[15px] text-muted">We found this LinkedIn profile in your resume:</p>
-              <a href={found} target="_blank" rel="noopener noreferrer" className="mt-3 inline-block max-w-full break-all rounded-xl bg-surface px-4 py-2.5 text-[15px] font-medium text-brand hover:underline">
-                {found}
+              <a
+                href={found.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-block max-w-full break-all rounded-xl border border-brand/25 bg-brand-soft/60 px-4 py-2.5 text-[15px] font-medium text-brand hover:underline"
+              >
+                {found.url}
               </a>
-              <p className="mt-3 text-[15px]">Is this correct?</p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Button onClick={() => save(found)}>Confirm</Button>
-                <Button variant="secondary" onClick={() => startEdit(found)}>
+              <p className="mt-2 flex items-start gap-1.5 text-[13px] text-muted">
+                <SparkleIcon size={12} className="mt-[3px] shrink-0 text-brand" />
+                {SOURCE_NOTE[found.source]}
+              </p>
+              <p className="mt-4 text-[15px]">Is this correct?</p>
+              <div className="mt-3 flex flex-wrap gap-3">
+                <Button onClick={() => save(found.url, found.source)}>Confirm</Button>
+                <Button variant="secondary" onClick={() => startEdit(found.url)}>
                   Edit
                 </Button>
               </div>
@@ -74,7 +99,8 @@ function LinkedInUrlCard() {
 
           {mode === "saved" && (
             <>
-              <h2 className="text-[22px] font-semibold tracking-[-0.02em]">LinkedIn added</h2>
+              {savedFrom && <AutoBadge>Auto-detected from your resume</AutoBadge>}
+              <h2 className={`${savedFrom ? "mt-3 " : ""}text-[22px] font-semibold tracking-[-0.02em]`}>LinkedIn added</h2>
               <p className="mt-2 flex flex-wrap items-center gap-2 text-[15px]">
                 <CheckIcon className="text-ok" />
                 <span className="break-all font-medium">{saved}</span>
@@ -91,6 +117,12 @@ function LinkedInUrlCard() {
               <p className="mt-1 text-[15px] text-muted">
                 {mode === "enter" ? "We didn’t find a LinkedIn link in your resume. Add it so recruiters can find you." : "Paste the link to your own profile."}
               </p>
+              {mode === "enter" && (
+                <p className="mt-2 flex items-start gap-1.5 text-[13px] text-muted">
+                  <SparkleIcon size={12} className="mt-[3px] shrink-0 text-brand" />
+                  Nevora looks for your LinkedIn automatically when you upload a resume, even when it’s hidden behind a link.
+                </p>
+              )}
               <label htmlFor={inputId} className="mt-4 block text-sm font-medium">
                 LinkedIn profile URL
               </label>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findLinkedInUrl, normalizeLinkedInUrl } from "../src/lib/linkedinUrl";
+import { findLinkedIn, findLinkedInUrl, normalizeLinkedInUrl } from "../src/lib/linkedinUrl";
 
 const CANON = "https://www.linkedin.com/in/arun-kumar";
 
@@ -59,5 +59,17 @@ describe("findLinkedInUrl", () => {
 
   it("does not match lookalike hosts in text", () => {
     expect(findLinkedInUrl(["visit notlinkedin.com/in/arun-kumar or evil.com/linkedin.com/in/arun-kumar"])).toBeNull();
+  });
+});
+
+describe("findLinkedIn reports where the URL came from", () => {
+  it("prefers the visible text", () => {
+    expect(findLinkedIn(["linkedin.com/in/arun-kumar"], ["https://linkedin.com/in/other-one"])).toEqual({ url: CANON, source: "text" });
+  });
+  it("falls back to hidden hyperlinks", () => {
+    expect(findLinkedIn(["Arun Kumar | LinkedIn"], ["https://www.linkedin.com/company/acme", "https://in.linkedin.com/in/arun-kumar/"])).toEqual({ url: CANON, source: "hyperlink" });
+  });
+  it("returns null when neither has one", () => {
+    expect(findLinkedIn(["no links"], ["https://github.com/arunk"])).toBeNull();
   });
 });

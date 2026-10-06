@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { normalizeLinkedInUrl, type FoundLinkedIn } from "../lib/linkedinUrl";
 
 /**
  * Setup-only state that must not reach the profile until the user confirms it:
@@ -7,23 +8,25 @@ import { create } from "zustand";
  */
 const KEY = "nevora-setup-linkedin";
 
-const read = (): string | null => {
+const read = (): FoundLinkedIn | null => {
   try {
-    return sessionStorage.getItem(KEY);
+    const v = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as Partial<FoundLinkedIn> | null;
+    const url = v?.url ? normalizeLinkedInUrl(v.url) : null;
+    return url ? { url, source: v?.source === "hyperlink" ? "hyperlink" : "text" } : null;
   } catch {
     return null;
   }
 };
 
-export const useSetup = create<{ foundLinkedIn: string | null; setFoundLinkedIn: (url: string | null) => void }>()((set) => ({
+export const useSetup = create<{ foundLinkedIn: FoundLinkedIn | null; setFoundLinkedIn: (found: FoundLinkedIn | null) => void }>()((set) => ({
   foundLinkedIn: read(),
-  setFoundLinkedIn: (url) => {
+  setFoundLinkedIn: (found) => {
     try {
-      if (url) sessionStorage.setItem(KEY, url);
+      if (found) sessionStorage.setItem(KEY, JSON.stringify(found));
       else sessionStorage.removeItem(KEY);
     } catch {
       /* storage can be blocked; the found URL just won't survive a reload */
     }
-    set({ foundLinkedIn: url });
+    set({ foundLinkedIn: found });
   },
 }));

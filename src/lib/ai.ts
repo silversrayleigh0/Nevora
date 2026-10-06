@@ -35,7 +35,7 @@ import {
 } from "./engine";
 import { isPdf, MAX_UPLOAD_BYTES, pdfText, proofImage, resumeLinks, resumeText } from "./extract";
 import { extractedAnything, parseLinkedInText } from "./linkedinPdf";
-import { findLinkedInUrl, isLinkedInLink } from "./linkedinUrl";
+import { findLinkedIn, isLinkedInLink, type FoundLinkedIn } from "./linkedinUrl";
 import {
   normalizeCoaching,
   normalizeCourses,
@@ -140,9 +140,9 @@ async function withPace<T>(work: () => Promise<T>): Promise<T> {
  * text and in hidden hyperlinks. The URL is returned separately and kept out of the
  * profile until the person confirms it (setup step 4).
  */
-export async function parseResume(file: File | null, text: string): Promise<{ profile: Profile; linkedIn: string | null }> {
+export async function parseResume(file: File | null, text: string): Promise<{ profile: Profile; linkedIn: FoundLinkedIn | null }> {
   const [{ profile, source }, links] = await Promise.all([readResume(file, text), file ? resumeLinks(file) : Promise.resolve([])]);
-  const linkedIn = findLinkedInUrl([source, ...links, ...profile.basics.links]);
+  const linkedIn = findLinkedIn([source, ...profile.basics.links], links);
   return { profile: { ...profile, basics: { ...profile.basics, links: profile.basics.links.filter((l) => !isLinkedInLink(l)) } }, linkedIn };
 }
 

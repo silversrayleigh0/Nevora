@@ -38,6 +38,17 @@ export function findLinkedInUrl(sources: string[]): string | null {
   return null;
 }
 
+export type LinkedInSource = "text" | "hyperlink";
+export type FoundLinkedIn = { url: string; source: LinkedInSource };
+
+/** Like findLinkedInUrl, but says whether the URL was visible in the text or hidden behind a hyperlink. */
+export function findLinkedIn(text: string[], hyperlinks: string[]): FoundLinkedIn | null {
+  const inText = findLinkedInUrl(text);
+  if (inText) return { url: inText, source: "text" };
+  const behindLink = findLinkedInUrl(hyperlinks);
+  return behindLink ? { url: behindLink, source: "hyperlink" } : null;
+}
+
 export const isLinkedInLink = (link: string) => /(^|[./])linkedin\.com(\/|$)/i.test(link);
 
 export const LINKEDIN_URL_ERROR = "Enter a LinkedIn profile link like linkedin.com/in/your-name.";

@@ -34,6 +34,12 @@ export const AwardIcon = ({ size = 20, className }: IconProps) => (
   </svg>
 );
 
+export const SparkleIcon = ({ size = 14, className }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className={className}>
+    <path d="M8 0.8l1.6 4.4 4.4 1.6-4.4 1.6L8 12.8 6.4 8.4 2 6.8l4.4-1.6zM13.2 10.4l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z" />
+  </svg>
+);
+
 export const InfoIcon = ({ size = 18, className }: IconProps) => (
   <svg {...base(size)} viewBox="0 0 24 24" className={className}>
     <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.6" />
