@@ -7,6 +7,7 @@ import type {
   Course,
   CourseSearch,
   CoverLetter,
+  LinkedInExtract,
   Gap,
   Insights,
   InterviewQuestion,
@@ -32,11 +33,13 @@ import {
   scoreMatch,
   sourceText,
 } from "./engine";
-import { MAX_UPLOAD_BYTES, proofImage, resumeLinks, resumeText } from "./extract";
+import { isPdf, MAX_UPLOAD_BYTES, pdfText, proofImage, resumeLinks, resumeText } from "./extract";
+import { extractedAnything, parseLinkedInText } from "./linkedinPdf";
 import { findLinkedInUrl, isLinkedInLink } from "./linkedinUrl";
 import {
   normalizeCoaching,
   normalizeCourses,
+  normalizeLinkedIn,
   normalizeInsights,
   normalizeInterview,
   normalizeJD,
@@ -314,4 +317,26 @@ export async function findCourses(skills: string[], role: string): Promise<Recor
       return [skill.toLowerCase(), web?.length ? { courses: web, searchedAt: now, source: "web" as const } : { courses: courseSearchLinks(skill), searchedAt: now, source: "search" as const }];
     }),
   );
+}
+
+/**
+ * Reads a LinkedIn PDF export. The layout is fixed, so it is read in the browser first;
+ * the AI (a short, low-effort task) is only asked when that finds nothing.
+ */
+export async function importLinkedIn(file: File, name: string): Promise<LinkedInExtract> {
+  if (!isPdf(file)) throw new Error("Choose the PDF you saved from LinkedIn.");
+  if (file.size > MAX_UPLOAD_BYTES) throw new Error("That file is over 5 MB. Try a smaller file.");
+  let text: string;
+  try {
+    text = await pdfText(file, 6);
+  } catch {
+    throw new Error("We couldn't open that PDF. Save it from LinkedIn again and retry.");
+  }
+  if (text.trim().length < 40) throw new Error("We couldn't read text from this PDF. Use LinkedIn’s Save to PDF, not a screenshot.");
+  const local = parseLinkedInText(text, name);
+  if (extractedAnything(local)) return local;
+  const data = await ask("parseLinkedIn", text.slice(0, 12_000));
+  const ai = data ? normalizeLinkedIn(data) : null;
+  if (ai && extractedAnything(ai)) return ai;
+  throw new Error("We couldn’t find Skills, Experience or Certifications in that PDF. Make sure it’s the Save to PDF file from your LinkedIn profile.");
 }

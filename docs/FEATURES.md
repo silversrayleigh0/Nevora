@@ -68,6 +68,11 @@ serves one of those goals and fits the minimal design.
 - Found: "We found this LinkedIn profile in your resume: … Is this correct?" with Confirm / Edit. Not found (or the resume couldn't be parsed / built from scratch): a URL prompt with Skip. Invalid input shows an inline error.
 - The URL is held in session-only setup state and saved to `basics.links` only after the user confirms or enters it.
 
+**Profile → LinkedIn PDF import (optional)** (`src/components/LinkedInImport.tsx`)
+- Shown only on the Profile page, with a 3-step guide to LinkedIn's "Save to PDF" (open until a PDF has been imported).
+- The PDF is read in the browser with a parser for LinkedIn's fixed layout (no AI tokens); a short low-effort Claude read (`parseLinkedIn`) runs only if that finds nothing.
+- Suggests only the skills, experience and certifications the profile doesn't have; the user picks what to add. Imported certificates stay off resumes until their image is verified.
+
 **Courses** (Grow → Skill gaps): one Claude web-search call per resume covers every gap (up to 4 skills, at most 3 searches, low effort), cached on the resume. The server keeps only courses whose URL appeared in the search results. Without Claude, each gap shows search links on Coursera, edX, freeCodeCamp, YouTube and Udemy. Saved courses live on the account.
 
 Tests use mocked providers only; no live web searches or LinkedIn calls.

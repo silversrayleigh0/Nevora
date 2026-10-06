@@ -34,7 +34,19 @@ export type Account = {
   status: CareerStatus;
   gradYear: string;
   interests: string[];
+  linkedin?: LinkedInData;
   savedCourses?: Course[];
+};
+
+export type LinkedInExtract = Pick<Profile, "skills" | "experience" | "certifications">;
+
+/** What the person's LinkedIn "Save to PDF" export contained (skills, experience, certifications). */
+export type LinkedInData = {
+  imported?: LinkedInExtract;
+  importedAt?: number;
+  fileName?: string;
+  /** Suggestion keys the person chose not to add. */
+  dismissed?: string[];
 };
 
 /** A course found by web search (source "web") or a search link built without AI (source "search"). */
@@ -213,4 +225,5 @@ export type AiTask =
   | "coverLetter"
   | "interviewPrep"
   | "coachBullet"
-  | "findCourses";
+  | "findCourses"
+  | "parseLinkedIn";
