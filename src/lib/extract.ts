@@ -33,13 +33,53 @@ export async function pdfText(file: File, maxPages = 8): Promise<string> {
   return pages.join("\n\n").replace(/[ \t]+/g, " ").trim();
 }
 
-type Mammoth = { extractRawText(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }> };
+type Mammoth = {
+  extractRawText(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
+  convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
+};
+
+async function loadMammoth(): Promise<Mammoth> {
+  const mod = (await import("mammoth/mammoth.browser.min.js")) as { default?: Mammoth } & Mammoth;
+  return mod.default ?? mod;
+}
 
 export async function docxText(file: File): Promise<string> {
-  const mod = (await import("mammoth/mammoth.browser.min.js")) as { default?: Mammoth } & Mammoth;
-  const mammoth = mod.default ?? mod;
+  const mammoth = await loadMammoth();
   const { value } = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
   return value.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Hyperlink targets in a resume. Resumes often show only the word "LinkedIn" with the
+ * URL hidden behind it, so plain text alone misses it. Never throws: a file we can't
+ * read simply has no links.
+ */
+export async function resumeLinks(file: File, maxPages = 4): Promise<string[]> {
+  try {
+    if (isPdf(file)) {
+      const [pdfjs, worker] = await Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+      const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+      const doc = await task.promise;
+      const links: string[] = [];
+      for (let i = 1; i <= Math.min(doc.numPages, maxPages); i++) {
+        for (const a of (await (await doc.getPage(i)).getAnnotations()) as { subtype?: string; url?: string; unsafeUrl?: string }[]) {
+          const url = a.url ?? a.unsafeUrl;
+          if (a.subtype === "Link" && typeof url === "string") links.push(url);
+        }
+      }
+      await task.destroy();
+      return links;
+    }
+    if (isDocx(file)) {
+      const { value } = await (await loadMammoth()).convertToHtml({ arrayBuffer: await file.arrayBuffer() });
+      const doc = new DOMParser().parseFromString(value, "text/html");
+      return [...doc.querySelectorAll("a[href]")].map((a) => a.getAttribute("href") ?? "").filter(Boolean);
+    }
+  } catch {
+    /* links are a bonus; the manual prompt covers this */
+  }
+  return [];
 }
 
 export async function resumeText(file: File): Promise<string> {

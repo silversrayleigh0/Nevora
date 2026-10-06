@@ -2,7 +2,6 @@
 import type {
   BulletCoaching,
   Course,
-  LinkedInExtract,
   Gap,
   Insights,
   InterviewQuestion,
@@ -16,7 +15,6 @@ import type {
   TailoredResume,
   Verification,
 } from "../../shared/types";
-import { categorize } from "./options";
 
 type Obj = Record<string, unknown>;
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -343,27 +341,4 @@ export function normalizeCourses(v: unknown, skills: string[]): Record<string, C
       (out[skill.toLowerCase()] ??= []).push(course);
     });
   return out;
-}
-
-/** Skills, experience and certifications from an AI read of a LinkedIn PDF (fallback only). */
-export function normalizeLinkedIn(v: unknown): LinkedInExtract {
-  const o = obj(v);
-  return {
-    skills: strings(o.skills).slice(0, 60).map((name, i) => ({ id: `li_skill_${i + 1}`, name, category: categorize(name) })),
-    experience: arr(o.experience)
-      .map(obj)
-      .map((e, i) => ({
-        id: `li_exp_${i + 1}`,
-        role: str(e.role).trim(),
-        org: str(e.org).trim(),
-        start: str(e.start).trim(),
-        end: str(e.end).trim(),
-        bullets: strings(e.bullets).map((text, b) => ({ id: `li_exp_${i + 1}_b${b + 1}`, text })),
-      }))
-      .filter((e) => e.role || e.org),
-    certifications: arr(o.certifications)
-      .map(obj)
-      .map((c, i) => ({ id: `li_cert_${i + 1}`, name: str(c.name).trim(), issuer: str(c.issuer).trim(), date: "", credential: "" }))
-      .filter((c) => c.name),
-  };
 }

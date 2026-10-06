@@ -7,7 +7,6 @@ import type {
   Course,
   CourseSearch,
   CoverLetter,
-  LinkedInExtract,
   Gap,
   Insights,
   InterviewQuestion,
@@ -33,12 +32,11 @@ import {
   scoreMatch,
   sourceText,
 } from "./engine";
-import { isPdf, MAX_UPLOAD_BYTES, pdfText, proofImage, resumeText } from "./extract";
-import { extractedAnything, parseLinkedInText } from "./linkedinPdf";
+import { MAX_UPLOAD_BYTES, proofImage, resumeLinks, resumeText } from "./extract";
+import { findLinkedInUrl, isLinkedInLink } from "./linkedinUrl";
 import {
   normalizeCoaching,
   normalizeCourses,
-  normalizeLinkedIn,
   normalizeInsights,
   normalizeInterview,
   normalizeJD,
@@ -134,7 +132,18 @@ async function withPace<T>(work: () => Promise<T>): Promise<T> {
 
 // ---------- Actions ----------
 
-export function parseResume(file: File | null, text: string): Promise<Profile> {
+/**
+ * Reads a resume into a profile, and looks for the person's LinkedIn profile URL in the
+ * text and in hidden hyperlinks. The URL is returned separately and kept out of the
+ * profile until the person confirms it (setup step 4).
+ */
+export async function parseResume(file: File | null, text: string): Promise<{ profile: Profile; linkedIn: string | null }> {
+  const [{ profile, source }, links] = await Promise.all([readResume(file, text), file ? resumeLinks(file) : Promise.resolve([])]);
+  const linkedIn = findLinkedInUrl([source, ...links, ...profile.basics.links]);
+  return { profile: { ...profile, basics: { ...profile.basics, links: profile.basics.links.filter((l) => !isLinkedInLink(l)) } }, linkedIn };
+}
+
+function readResume(file: File | null, text: string): Promise<{ profile: Profile; source: string }> {
   return withPace(async () => {
     let source = text;
     if (file) {
@@ -152,14 +161,14 @@ export function parseResume(file: File | null, text: string): Promise<Profile> {
       const data = await ask("parseResume", source.slice(0, 20_000));
       if (data) {
         const parsed = normalizeProfile(data);
-        if (parsedEnough(parsed)) return parsed;
+        if (parsedEnough(parsed)) return { profile: parsed, source };
       }
     } catch (err) {
       aiError = err as Error;
     }
     // Without AI (or if it failed), read the text directly. Nothing is invented either way.
     const local = parseResumeText(source);
-    if (parsedEnough(local)) return local;
+    if (parsedEnough(local)) return { profile: local, source };
     throw aiError ?? new Error("We couldn't find sections in that text. Add headings like Education, Skills and Projects, or choose “Build from scratch”.");
   });
 }
@@ -305,26 +314,4 @@ export async function findCourses(skills: string[], role: string): Promise<Recor
       return [skill.toLowerCase(), web?.length ? { courses: web, searchedAt: now, source: "web" as const } : { courses: courseSearchLinks(skill), searchedAt: now, source: "search" as const }];
     }),
   );
-}
-
-/**
- * Reads a LinkedIn PDF export. The layout is fixed, so it is read in the browser first;
- * the AI (a short, low-effort task) is only asked when that finds nothing.
- */
-export async function importLinkedIn(file: File, name: string): Promise<LinkedInExtract> {
-  if (!isPdf(file)) throw new Error("Choose the PDF you saved from LinkedIn.");
-  if (file.size > MAX_UPLOAD_BYTES) throw new Error("That file is over 5 MB. Try a smaller file.");
-  let text: string;
-  try {
-    text = await pdfText(file, 6);
-  } catch {
-    throw new Error("We couldn't open that PDF. Save it from LinkedIn again and retry.");
-  }
-  if (text.trim().length < 40) throw new Error("We couldn't read text from this PDF. Use LinkedIn’s Save to PDF, not a screenshot.");
-  const local = parseLinkedInText(text, name);
-  if (extractedAnything(local)) return local;
-  const data = await ask("parseLinkedIn", text.slice(0, 12_000));
-  const ai = data ? normalizeLinkedIn(data) : null;
-  if (ai && extractedAnything(ai)) return ai;
-  throw new Error("We couldn’t find Skills, Experience or Certifications in that PDF. Make sure it’s the Save to PDF file from your LinkedIn profile.");
 }

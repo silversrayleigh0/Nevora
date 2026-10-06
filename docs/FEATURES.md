@@ -59,12 +59,15 @@ serves one of those goals and fits the minimal design.
 - Hardcoded scores: removed.
 - Section layout ignored in some PDF paths: there is one PDF path and it honours hidden sections.
 
-## LinkedIn import and course recommendations
+## LinkedIn URL and course recommendations
 
-Flow: setup step 4 (or Profile / Grow) → upload the LinkedIn "Save to PDF" export → compare with the profile → add missing skills, experience and certifications → Grow suggests courses for the remaining gaps → save or open them.
+**Setup step 4: LinkedIn URL** (`src/pages/SetupLinkedIn.tsx`, `src/lib/linkedinUrl.ts`)
+- While parsing the uploaded resume, Nevora looks for a LinkedIn profile URL in the plain text first, then in hidden hyperlinks (PDF link annotations via pdf.js; Word `<a href>` via mammoth), since resumes often show only the word "LinkedIn".
+- Accepts `linkedin.com/in/<handle>` with or without `https://`, `www.` or a country subdomain, a trailing slash, query or fragment. Ignores `/company/`, `/school/`, `/jobs/` and every other non-profile link. The first valid `/in/` URL wins.
+- Normalized to `https://www.linkedin.com/in/<handle>`. Format check only: LinkedIn is never contacted, scraped or called.
+- Found: "We found this LinkedIn profile in your resume: … Is this correct?" with Confirm / Edit. Not found (or the resume couldn't be parsed / built from scratch): a URL prompt with Skip. Invalid input shows an inline error.
+- The URL is held in session-only setup state and saved to `basics.links` only after the user confirms or enters it.
 
-- **No LinkedIn login.** A short 3-step guide shows how to download the PDF (Me → View profile → Resources → Save to PDF).
-- **Token use:** the PDF is read in the browser with a parser for LinkedIn's fixed layout, so most imports cost no AI tokens. Only if that finds nothing is Claude asked (`parseLinkedIn`, low effort, skills/experience/certifications only, 12k characters max).
-- **Compare:** anything already on the profile is skipped (skill aliases like React / React.js, same company and role, same certificate). Skills that close a gap for the current job come first. Imported certificates stay off resumes until their image is verified.
-- **Courses:** one Claude web-search call per resume covers every gap (up to 4 skills, at most 3 searches, low effort), cached on the resume. The server keeps only courses whose URL appeared in the search results. Without Claude, each gap shows search links on Coursera, edX, freeCodeCamp, YouTube and Udemy. Saved courses live on the account.
-- Tests use mocked providers only; no live web searches.
+**Courses** (Grow → Skill gaps): one Claude web-search call per resume covers every gap (up to 4 skills, at most 3 searches, low effort), cached on the resume. The server keeps only courses whose URL appeared in the search results. Without Claude, each gap shows search links on Coursera, edX, freeCodeCamp, YouTube and Udemy. Saved courses live on the account.
+
+Tests use mocked providers only; no live web searches or LinkedIn calls.

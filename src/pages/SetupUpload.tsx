@@ -8,6 +8,7 @@ import { parseResume } from "../lib/ai";
 import { isDocx, isPdf, MAX_UPLOAD_BYTES } from "../lib/extract";
 import { emptyProfile } from "../lib/normalize";
 import { useApp } from "../store/app";
+import { useSetup } from "../store/setup";
 
 /** Details typed in step 1 win over whatever the parser found. */
 const withAccount = (p: Profile, a: Account | null): Profile => ({
@@ -25,6 +26,7 @@ function Upload() {
   const navigate = useNavigate();
   const account = useApp((s) => s.account);
   const setProfile = useApp((s) => s.setProfile);
+  const setFoundLinkedIn = useSetup((s) => s.setFoundLinkedIn);
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [pasting, setPasting] = useState(false);
@@ -41,11 +43,13 @@ function Upload() {
     setFile(f);
   };
   const analyze = async () => {
+    setFoundLinkedIn(null);
     setBusy(true);
     setError("");
     try {
-      const parsed = await parseResume(pasting ? null : file, pasting ? text : "");
-      setProfile(withAccount(parsed, account));
+      const { profile, linkedIn } = await parseResume(pasting ? null : file, pasting ? text : "");
+      setFoundLinkedIn(linkedIn);
+      setProfile(withAccount(profile, account));
       navigate("/setup/review");
     } catch (err) {
       setError((err as Error).message);
@@ -54,6 +58,7 @@ function Upload() {
     }
   };
   const fromScratch = () => {
+    setFoundLinkedIn(null);
     setProfile(withAccount(emptyProfile(account?.name, account?.email), account));
     navigate("/setup/review");
   };

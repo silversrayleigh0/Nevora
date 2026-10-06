@@ -71,16 +71,13 @@ Use web search (one or two broad searches are enough) to find, for EACH skill, 2
 Return {"courses":[{"skill":"","title":"","provider":"","url":"","free":true,"level":"beginner|intermediate|advanced","duration":"","why":""}]}.
 skill: exactly one of the INPUT skills. url: the exact course page URL from your search results — never guess or build one; leave out any course you didn't see.
 free: true if free or free to audit, false if paid, null if unclear. duration: as stated on the page, or "". why: one short sentence. ${JSON_ONLY}`,
-
-  parseLinkedIn: `INPUT is text from a LinkedIn profile PDF. Return only {"skills":[""],"experience":[{"role":"","org":"","start":"","end":"","bullets":[""]}],"certifications":[{"name":"","issuer":""}]}.
-Copy facts verbatim; never add anything. Dates like "Jun 2024" or "Present". ${JSON_ONLY}`,
 };
 
 /** Tasks that run with Claude's web search tool. Other providers can't search, so these need Claude. */
 export const WEB_TASKS = new Set<AiTask>(["findCourses"]);
 
 /** Small, fast model for short tasks; the main model for everything else. */
-export const QUICK_TASKS = new Set<AiTask>(["insights", "coachBullet", "analyzeJD", "parseLinkedIn", "findCourses"]);
+export const QUICK_TASKS = new Set<AiTask>(["insights", "coachBullet", "analyzeJD", "findCourses"]);
 
 /** Tasks that accept an uploaded image. */
 export const IMAGE_TASKS = new Set<AiTask>(["verifyDocument"]);
@@ -106,7 +103,6 @@ export const MAX_TOKENS: Partial<Record<AiTask, number>> = {
   verifyDocument: 1200,
   coachBullet: 600,
   findCourses: 3000,
-  parseLinkedIn: 2500,
 };
 
 type RawCourse = { title?: unknown; provider?: unknown; url?: unknown; free?: unknown; level?: unknown; duration?: unknown; why?: unknown };

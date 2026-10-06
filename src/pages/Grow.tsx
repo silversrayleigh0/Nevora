@@ -3,11 +3,9 @@ import { Link } from "react-router";
 import type { Application, BulletCoaching, Course, CourseSearch, Gap } from "../../shared/types";
 import { CheckIcon } from "../components/icons";
 import { FlowPage } from "../components/layout";
-import LinkedInImport from "../components/LinkedInImport";
 import { Button, ErrorBox, Placeholders, Steps } from "../components/ui";
-import { coachBullet, findCourses, interviewPrep, learningPlan, match } from "../lib/ai";
+import { coachBullet, findCourses, interviewPrep, learningPlan } from "../lib/ai";
 import { pointsFor, potentialScore, sourceLabel } from "../lib/engine";
-import { hasSkill } from "../lib/linkedin";
 import { useApp } from "../store/app";
 import { toast } from "../store/toast";
 
@@ -19,7 +17,6 @@ function GapCard({
   open,
   done,
   gain,
-  badge,
   onToggleOpen,
   onToggleStep,
   children,
@@ -29,7 +26,6 @@ function GapCard({
   open: boolean;
   done: Record<string, boolean>;
   gain?: number;
-  badge?: string;
   onToggleOpen: () => void;
   onToggleStep: (key: string) => void;
   children?: ReactNode;
@@ -43,7 +39,6 @@ function GapCard({
           <span className={`rounded-full px-3 py-1 text-[13px] ${gap.priority === "high" ? "bg-learn text-white" : "bg-learn-soft text-learn-ink"}`}>{PRIORITY[gap.priority]}</span>
           {gain ? <span className="rounded-full bg-surface px-3 py-1 text-[13px] font-medium">+{gain} match points</span> : null}
           {finished === gap.steps.length && <span className="rounded-full bg-ok-soft px-3 py-1 text-[13px] text-ok">Done</span>}
-          {badge && <span className="rounded-full bg-surface px-3 py-1 text-[13px] font-medium text-[#0a66c2]">{badge}</span>}
         </div>
         <div className="flex items-center gap-5 text-sm text-muted">
           <span className="hidden sm:inline">{gap.timeEstimate}</span>
@@ -386,19 +381,6 @@ function GrowStep({ app }: { app: Application }) {
   const requirements = app.match?.requirements ?? [];
   const current = app.match?.score ?? 0;
   const forecast = requirements.length && plan.length ? potentialScore(requirements, plan.map((g) => g.skill)) : current;
-  const imported = useApp((s) => s.account?.linkedin?.imported);
-  const gapSkills = [...plan.map((g) => g.skill), ...requirements.filter((r) => r.status !== "strong" && r.type !== "education").map((r) => r.requirement)];
-
-  // Skills added from LinkedIn count as evidence, so refresh the match score.
-  const rematch = async () => {
-    const latest = useApp.getState().profile;
-    if (!latest || !app.jd) return;
-    try {
-      updateApplication(app.id, { match: await match(latest, app.jd) });
-    } catch {
-      toast("Couldn’t refresh your match score. It updates next time you open the match.");
-    }
-  };
   // Courses for every gap come from ONE web-search call, made once per resume and cached.
   const [coursesBusy, setCoursesBusy] = useState<string[]>([]);
   const [coursesError, setCoursesError] = useState("");
@@ -427,7 +409,6 @@ function GrowStep({ app }: { app: Application }) {
     void loadCourses(missing);
   }, [app.plan, app.courses, loadCourses]);
 
-  const gapBadge = (skill: string) => (imported && hasSkill(imported, skill) ? "Listed on your LinkedIn" : undefined);
 
   return (
     <main className="mx-auto max-w-[1000px] px-6 pb-24 pt-16">
@@ -460,9 +441,6 @@ function GrowStep({ app }: { app: Application }) {
           </span>
         </div>
       )}
-      <div className="mt-9">
-        <LinkedInImport gapSkills={gapSkills} onApplied={() => void rematch()} />
-      </div>
       <h2 className="mt-12 text-[28px] font-semibold tracking-[-0.02em]">Skill gaps</h2>
       <div className="mt-4 flex flex-col gap-3.5">
         {busy && (
@@ -479,7 +457,6 @@ function GrowStep({ app }: { app: Application }) {
             open={Boolean(open[i])}
             done={app.planDone}
             gain={requirements.length ? pointsFor(requirements, gap.skill) : undefined}
-            badge={gapBadge(gap.skill)}
             onToggleOpen={() => setOpen({ ...open, [i]: !open[i] })}
             onToggleStep={(key) => updateApplication(app.id, { planDone: { ...app.planDone, [key]: !app.planDone[key] } })}
           >
