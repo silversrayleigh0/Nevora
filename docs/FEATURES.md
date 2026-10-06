@@ -15,7 +15,7 @@ serves one of those goals and fits the minimal design.
 | Profile | One editable profile: basics, education, projects, experience, skills, certifications, achievements, links | The single source of truth every resume is built from |
 | Profile | Section status (done / needs attention) and the impact hint on bullets without numbers | Pushes students to add real evidence instead of the AI making it up |
 | Profile | Dropdowns for degree, branch, years and dates (with "Other…"), and a searchable skill picker that sorts skills into categories | Faster, consistent entries |
-| Profile | **Certificates by image only**: upload a photo/scan/PDF; the AI reads it and checks it's issued to the student. Only verified certificates appear on resumes | No typed-in credentials to fake |
+| Profile | **Certificates with optional verification**: add or edit name, issuer and date; optionally verify with the certificate image (only when live AI is on). All certificates appear on resumes except one whose image failed the check | Verification is opt-in |
 | Profile | **Proof for experience**: upload an offer/internship/experience letter; the AI checks name, organisation, role and dates | Recruiter trust; clearing a field after verification resets the check |
 | Job | Paste a JD → required, nice-to-have, soft skills, responsibilities (editable) | "Understand the job description" |
 | Match | Weighted match score with breakdown and per-requirement evidence (Strong / Partial / Missing) | "Determine relevance", shown as proof, not a black-box number |
@@ -71,7 +71,7 @@ serves one of those goals and fits the minimal design.
 **Profile → LinkedIn PDF import (optional)** (`src/components/LinkedInImport.tsx`)
 - Shown only on the Profile page, with a 3-step guide to LinkedIn's "Save to PDF" (open until a PDF has been imported).
 - The PDF is read in the browser with a parser for LinkedIn's fixed layout (no AI tokens); a short low-effort Claude read (`parseLinkedIn`) runs only if that finds nothing.
-- Suggests only the skills, experience and certifications the profile doesn't have; the user picks what to add. Imported certificates stay off resumes until their image is verified.
+- Suggests only the skills, experience and certifications the profile doesn't have; the user picks what to add. Verifying imported certificates is optional.
 
 **Courses** (Grow → Skill gaps): one Claude web-search call per resume covers every gap (up to 4 skills, at most 3 searches, low effort), cached on the resume. The server keeps only courses whose URL appeared in the search results. Without Claude, each gap shows search links on Coursera, edX, freeCodeCamp, YouTube and Udemy. Saved courses live on the account.
 

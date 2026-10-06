@@ -135,7 +135,14 @@ export function normalizeProfile(input: unknown): Profile {
           normalizeProof(o.proof),
         );
       })
-      .filter((c) => c.name),
+      .filter((c) => c.name)
+      // "(Elite + Gold, 91%)" read as its own certificate belongs to the one before it.
+      .reduce<Profile["certifications"]>((list, c) => {
+        const prev = list[list.length - 1];
+        if (prev && /^\(.*\)$/.test(c.name) && !c.issuer && !("proof" in c)) list[list.length - 1] = { ...prev, name: `${prev.name} ${c.name}` };
+        else list.push(c);
+        return list;
+      }, []),
     achievements: bullets(p.achievements, "ach").map((a, i) => ({ ...a, id: a.id.startsWith("ach") ? a.id : `ach_${i + 1}` })),
   };
 }

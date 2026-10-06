@@ -23,9 +23,10 @@ Browser (React)                                   Vercel function /api/ai
   stays locked until every line passes.
 - **Basic mode.** If AI isn't configured or is unavailable, every step still works using the
   deterministic engine. It reuses the student's own words and never invents content.
-- **Proof, not claims.** Certificates are added by uploading the certificate image; the AI reads it
-  and checks it is issued to the student. Experience entries ask for an offer or experience letter
-  and show whether it checked out. Only verified certificates appear on resumes. (The image check
+- **Optional proof.** Certificates are typed in or come from the resume, and appear on resumes.
+  Verifying one with its image is optional (the AI reads it and checks it is issued to the student);
+  a certificate whose image fails the check is left off. Experience entries can take an offer or
+  experience letter and show whether it checked out. (The image check
   catches mismatched names, wrong organisations and visible edits; it can't prove a document is
   genuine the way the issuer can.)
 - **Sign-in.** Email/password or Google (Firebase Auth) are the only ways in. If a profile can't

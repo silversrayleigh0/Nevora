@@ -191,8 +191,8 @@ export async function verifyDocument(
   return normalizeProofCheck(data, kind);
 }
 
-/** Only verified certificates appear on tailored resumes. */
-export const resumeProfile = (p: Profile): Profile => ({ ...p, certifications: p.certifications.filter((c) => c.proof?.status === "verified") });
+/** Verification is optional: every certificate appears on resumes except one whose image failed the check. */
+export const resumeProfile = (p: Profile): Profile => ({ ...p, certifications: p.certifications.filter((c) => c.name.trim() && c.proof?.status !== "rejected") });
 
 export function insights(profile: Profile, interests: string[] | undefined): Promise<Insights | null> {
   return withPace(async () => {

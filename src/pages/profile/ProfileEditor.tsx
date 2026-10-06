@@ -4,7 +4,7 @@ import { Dropdown } from "../../components/Dropdown";
 import { MonthYearField, SelectField, SkillPicker, YearField } from "../../components/form";
 import { AwardIcon, CheckIcon, CloseIcon, ShieldIcon, UploadIcon } from "../../components/icons";
 import { Button, Chip, TextField } from "../../components/ui";
-import { verifyDocument, type ProofKind } from "../../lib/ai";
+import { useAiMode, verifyDocument, type ProofKind } from "../../lib/ai";
 import { PROOF_ACCEPT } from "../../lib/extract";
 import { BRANCHES, categorize, DEGREES } from "../../lib/options";
 import { profilePhoto } from "../../lib/templates";
@@ -198,70 +198,102 @@ function ProofRow({
   );
 }
 
-function Certifications({ profile, update }: { profile: Profile; update: Update }) {
-  const verified = profile.certifications.filter((c) => c.proof?.status === "verified").length;
-  const addFromCheck = (check: ProofCheck, proof: Proof, existingId?: string) => {
-    if (proof.status !== "verified") {
-      if (existingId) update((p) => ({ ...p, certifications: p.certifications.map((c) => (c.id === existingId ? { ...c, proof } : c)) }));
-      else toast("That certificate couldn’t be verified, so it wasn’t added.");
-      return;
+/** Optional check of a certificate image. Small, and only offered when live AI is on. */
+function VerifyLink({ proof, expected, onChecked }: { proof?: Proof; expected: () => { name: string }; onChecked: (check: ProofCheck, proof: Proof) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    try {
+      const check = await verifyDocument(file, "certificate", expected());
+      onChecked(check, {
+        status: check.verdict === "verified" ? "verified" : "rejected",
+        reason: [check.reason, ...check.concerns].filter(Boolean).join(" "),
+        fileName: file.name,
+        checkedAt: Date.now(),
+        documentType: check.documentType,
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
     }
-    const details = { name: check.title || check.documentType, issuer: check.issuer, date: check.date, credential: "" };
-    update((p) => {
-      const match = existingId ?? p.certifications.find((c) => c.name.toLowerCase() === details.name.toLowerCase())?.id;
-      return match
-        ? { ...p, certifications: p.certifications.map((c) => (c.id === match ? { ...c, ...details, proof } : c)) }
-        : { ...p, certifications: [...p.certifications, { id: newId("cert"), ...details, proof }] };
-    });
-    toast(`Verified ${details.name}`);
   };
-  const [lastRejected, setLastRejected] = useState<Proof | undefined>();
   return (
-    <Section
-      id="certifications"
-      highlight={!verified}
-      title="Certifications"
-      subtitle="Upload a photo, scan or PDF of each certificate. Nevora reads it, checks it’s issued to you, and adds it. Only verified certificates appear on your resumes."
-    >
+    <>
+      <input ref={input} type="file" accept={PROOF_ACCEPT} className="sr-only" aria-label="Verify with the certificate image (optional)" onChange={(e) => upload(e.target.files?.[0])} />
+      <button type="button" disabled={busy} onClick={() => input.current?.click()} className="text-sm font-medium text-brand hover:underline disabled:text-muted">
+        {busy ? "Checking…" : proof ? "Verify again" : "Verify (optional)"}
+      </button>
+      {error && (
+        <span role="alert" className="basis-full text-sm text-bad">
+          {error}
+        </span>
+      )}
+    </>
+  );
+}
+
+function Certifications({ profile, update }: { profile: Profile; update: Update }) {
+  const live = useAiMode() === "live";
+  const [editing, setEditing] = useState<string | null>(null);
+  const setCert = (id: string, patch: Partial<Profile["certifications"][number]>) =>
+    update((p) => ({ ...p, certifications: p.certifications.map((c) => (c.id === id ? { ...c, ...patch } : c)) }));
+  const add = () => {
+    const id = newId("cert");
+    update((p) => ({ ...p, certifications: [...p.certifications, { id, name: "", issuer: "", date: "", credential: "" }] }));
+    setEditing(id);
+  };
+  return (
+    <Section id="certifications" title="Certifications" subtitle="Certificates appear on your resumes. Verifying one with its image is optional." action={<AddLink onClick={add}>Add</AddLink>}>
+      {!profile.certifications.length && <p className="text-[15px] text-muted">No certifications yet. Add courses or certificates you’ve completed.</p>}
       {profile.certifications.map((c) => {
         const ok = c.proof?.status === "verified";
+        const rejected = c.proof?.status === "rejected";
+        const open = editing === c.id || !c.name;
         return (
           <div key={c.id} className="flex flex-col gap-3 rounded-2xl bg-surface px-4 py-4">
-            <div className="flex items-center gap-3.5">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-white ${ok ? "text-ok" : "text-brand"}`}>{ok ? <CheckIcon size={18} /> : <AwardIcon />}</span>
+            <div className="flex items-start gap-3.5">
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white ${ok ? "text-ok" : "text-brand"}`}>{ok ? <CheckIcon size={18} /> : <AwardIcon />}</span>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold">{c.name}</div>
-                <div className="mt-0.5 text-sm text-muted">
-                  {[c.issuer, c.date].filter(Boolean).join(" · ")}
-                  {ok ? <span className="text-ok"> · Verified</span> : <span className="text-warn"> · Not verified — hidden from resumes</span>}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold">{c.name || "New certification"}</span>
+                  {ok && <span className="rounded-full bg-ok-soft px-2 py-0.5 text-[12px] font-medium text-ok">Verified</span>}
+                </div>
+                {(c.issuer || c.date) && <div className="mt-0.5 text-sm text-muted">{[c.issuer, c.date].filter(Boolean).join(" · ")}</div>}
+                {rejected && <div className="mt-1 text-sm text-warn">Couldn’t verify, so it’s left off resumes. {c.proof?.reason}</div>}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <button type="button" className="text-sm font-medium text-muted hover:text-ink" onClick={() => setEditing(open ? null : c.id)}>
+                    {open ? "Done" : "Edit"}
+                  </button>
+                  {live && !ok && (
+                    <VerifyLink
+                      proof={c.proof}
+                      expected={() => ({ name: profile.basics.name })}
+                      onChecked={(check, proof) => {
+                        setCert(c.id, { proof, ...(proof.status === "verified" && !c.issuer && check.issuer ? { issuer: check.issuer } : {}) });
+                        toast(proof.status === "verified" ? `Verified ${c.name}` : "Couldn’t verify that certificate.");
+                      }}
+                    />
+                  )}
                 </div>
               </div>
-              <RemoveButton label={`Remove ${c.name}`} onClick={() => update((p) => ({ ...p, certifications: p.certifications.filter((x) => x.id !== c.id) }))} />
+              <RemoveButton label={`Remove ${c.name || "certification"}`} onClick={() => update((p) => ({ ...p, certifications: p.certifications.filter((x) => x.id !== c.id) }))} />
             </div>
-            {!ok && (
-              <ProofRow
-                proof={c.proof}
-                kind="certificate"
-                label="Verify this certificate"
-                hint="Upload the certificate to show it on your resumes."
-                expected={() => ({ name: profile.basics.name })}
-                onChecked={(check, proof) => addFromCheck(check, proof, c.id)}
-              />
+            {open && (
+              <div className="grid gap-3 sm:grid-cols-[2fr_1.4fr_1fr]">
+                <TextField label="Name" placeholder="e.g. AWS Cloud Practitioner" value={c.name} onChange={(e) => setCert(c.id, { name: e.target.value })} />
+                <TextField label="Issued by" placeholder="e.g. Coursera, NPTEL" value={c.issuer} onChange={(e) => setCert(c.id, { issuer: e.target.value })} />
+                <TextField label="Date" placeholder="e.g. Mar 2024" value={c.date} onChange={(e) => setCert(c.id, { date: e.target.value })} />
+              </div>
             )}
           </div>
         );
       })}
-      <ProofRow
-        proof={lastRejected}
-        kind="certificate"
-        label="Upload a certificate"
-        hint="PNG, JPG or PDF. We’ll read the name, issuer and date for you."
-        expected={() => ({ name: profile.basics.name })}
-        onChecked={(check, proof) => {
-          setLastRejected(proof.status === "verified" ? undefined : proof);
-          addFromCheck(check, proof);
-        }}
-      />
     </Section>
   );
 }
@@ -539,7 +571,7 @@ export function sectionStatus(p: Profile, key: (typeof PROFILE_SECTIONS)[number]
     case "skills":
       return p.skills.length >= 3 ? "done" : "attention";
     case "certifications":
-      return p.certifications.some((c) => c.proof?.status === "verified") ? "done" : "attention";
+      return p.certifications.length ? "done" : "empty";
     case "achievements":
       return p.achievements.length ? "done" : "empty";
     case "links":

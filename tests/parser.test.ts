@@ -163,3 +163,18 @@ describe("normalizeProfile drops punctuation-only items (AI output and stored da
     expect(p.achievements.map((a) => a.text)).toEqual(["Won"]);
   });
 });
+
+describe("certificate continuation lines", () => {
+  it("joins a wrapped line to the certificate above it", () => {
+    const p = parseResumeText("Arun Kumar\nCertifications\n• Cloud Computing – NPTEL\n(Elite + Gold, 91%)\n• Develop Generative AI Applications: Get Started, IBM\n• Python for Data Science,\nCoursera (2024)");
+    expect(p.certifications.map((c) => [c.name, c.issuer, c.date])).toEqual([
+      ["Cloud Computing", "NPTEL (Elite + Gold, 91%)", ""],
+      ["Develop Generative AI Applications: Get Started, IBM", "", ""],
+      ["Python for Data Science, Coursera", "", "2024"],
+    ]);
+  });
+  it("repairs stored profiles that already split it", () => {
+    const p = normalizeProfile({ certifications: [{ name: "Cloud Computing – NPTEL" }, { name: "(Elite + Gold, 91%)" }, { name: "IBM GenAI" }] });
+    expect(p.certifications.map((c) => c.name)).toEqual(["Cloud Computing – NPTEL (Elite + Gold, 91%)", "IBM GenAI"]);
+  });
+});

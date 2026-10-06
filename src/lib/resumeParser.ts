@@ -195,9 +195,17 @@ export function parseResumeText(raw: string): Profile {
     };
   });
 
-  const certifications = splitBullets(buckets.certifications)
-    .map((l) => clean(l.replace(BULLET, "")))
-    .filter(meaningful)
+  // A line that continues the one above it ("(Elite + Gold, 91%)", a lowercase start, or after a
+  // trailing comma or dash) is part of the same certificate, not a new one.
+  const certLines: string[] = [];
+  for (const raw of splitBullets(buckets.certifications)) {
+    const line = clean(raw.replace(BULLET, ""));
+    if (!meaningful(line)) continue;
+    const last = certLines.length - 1;
+    if (!BULLET.test(raw) && last >= 0 && (/^[([&a-z]/.test(line) || /[,&(–—-]$/.test(certLines[last]))) certLines[last] = `${certLines[last]} ${line}`;
+    else certLines.push(line);
+  }
+  const certifications = certLines
     .map((l, i) => {
       const ranged = takeDates(l);
       // A single trailing date: "(2024)", ", Mar 2024", "– 2024".
