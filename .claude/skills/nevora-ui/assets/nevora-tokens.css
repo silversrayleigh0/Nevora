@@ -1,0 +1,84 @@
+/* Nevora design tokens for work outside the app (HTML mockups, artifacts, emails).
+   Inside the repo use the Tailwind classes from src/index.css instead.
+   Load the font:  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap"> */
+
+:root {
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --hair: #d2d2d7;
+  --line: #e8e8ed;
+  --surface: #f5f5f7;
+  --card: #ffffff;
+  --page: #ffffff;
+
+  --brand: #673cea;
+  --brand-hover: #5429d6;
+  --brand-ink: #4a22c7;
+  --brand-soft: #f3effe;
+
+  --learn: #0a7a8a;
+  --learn-hover: #075f6b;
+  --learn-ink: #0a6b78;
+  --learn-soft: #e6f5f7;
+
+  --ok: #1e7b34;  --ok-soft: #e9f7ee;  --ok-dot: #34c759;
+  --warn: #8a4b00; --warn-soft: #fff6e8; --warn-dot: #ff9f0a;
+  --bad: #c4001a;  --bad-soft: #ffecee;  --bad-dot: #ff3b30;
+  --metric: #fff3b0;
+
+  --radius-input: 14px;
+  --radius-row: 16px;
+  --radius-card: 22px;
+  --radius-panel: 30px;
+  --radius-pill: 9999px;
+  --shadow-float: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --shadow-dialog: 0 24px 80px rgba(0, 0, 0, 0.18);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #f5f5f7; --muted: #a1a1a6; --hair: #48484a; --line: #2c2c2e; --surface: #1c1c1e; --card: #151517; --page: #0b0b0c;
+    --brand: #7c5cf5; --brand-hover: #8f74f7; --brand-ink: #c4b5fd; --brand-soft: #241d3d;
+    --learn: #1595a8; --learn-hover: #19a9be; --learn-ink: #7dd3df; --learn-soft: #10292d;
+    --ok: #4ade80; --ok-soft: #10261a; --warn: #fbbf24; --warn-soft: #2b2110; --bad: #ff6b6b; --bad-soft: #2e1416; --metric: #5c4a00;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #f5f5f7; --muted: #a1a1a6; --hair: #48484a; --line: #2c2c2e; --surface: #1c1c1e; --card: #151517; --page: #0b0b0c;
+  --brand: #7c5cf5; --brand-hover: #8f74f7; --brand-ink: #c4b5fd; --brand-soft: #241d3d;
+  --learn: #1595a8; --learn-hover: #19a9be; --learn-ink: #7dd3df; --learn-soft: #10292d;
+  --ok: #4ade80; --ok-soft: #10261a; --warn: #fbbf24; --warn-soft: #2b2110; --bad: #ff6b6b; --bad-soft: #2e1416; --metric: #5c4a00;
+  color-scheme: dark;
+}
+
+body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+.tight { letter-spacing: -0.035em; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 20px; border-radius: var(--radius-pill); border: 0; font: 500 15px var(--font-sans); cursor: pointer; }
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-primary:hover { background: var(--brand-hover); }
+.btn-secondary { background: var(--card); color: var(--ink); border: 1px solid var(--hair); }
+.btn-ghost { background: var(--surface); color: var(--ink); }
+.btn-learn { background: var(--learn); color: #fff; }
+
+.input { width: 100%; height: 52px; padding: 0 16px; border: 2px solid transparent; border-radius: var(--radius-input); background: var(--surface); color: var(--ink); font: 17px var(--font-sans); outline: none; box-sizing: border-box; }
+.input:focus { border-color: var(--brand); background: var(--card); }
+
+.card { border: 1px solid var(--line); border-radius: var(--radius-card); padding: 28px; background: var(--card); }
+.panel { background: var(--surface); border-radius: var(--radius-panel); padding: 40px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: var(--radius-pill); background: var(--surface); font-size: 14px; }
+
+.frost-panel {
+  background: color-mix(in srgb, var(--card) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  box-shadow: var(--shadow-dialog);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+}
+
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 8px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
