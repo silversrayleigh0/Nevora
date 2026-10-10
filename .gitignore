@@ -7,3 +7,6 @@ dist
 *.log
 coverage
 *.tsbuildinfo
+
+# Temporary agent worktrees
+.claude/worktrees/
